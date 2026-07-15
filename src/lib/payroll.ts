@@ -1,0 +1,71 @@
+import type { PaySlipDayLine, PayrollLineItem, TimeEntry, EmployeeRate } from './types'
+import { calcHours, formatDate } from './utils'
+import { getRateForDate } from './rates'
+
+export function buildPayrollForEmployee(
+  employeeId: string,
+  employeeName: string,
+  entries: TimeEntry[],
+  rates: EmployeeRate[],
+): PayrollLineItem | null {
+  const approved = entries.filter(
+    (e) => e.employeeId === employeeId && e.status === 'approved' && e.clockIn && e.clockOut,
+  )
+  if (approved.length === 0) return null
+
+  const dayBreakdown: PaySlipDayLine[] = approved.map((e) => {
+    const hours = calcHours(e.clockIn, e.clockOut)
+    const rate = getRateForDate(rates, e.workDate)
+    return {
+      workDate: e.workDate,
+      hours,
+      rate,
+      amount: Math.round(hours * rate * 100) / 100,
+    }
+  })
+
+  const totalHours = dayBreakdown.reduce((s, d) => s + d.hours, 0)
+  const grossPay = dayBreakdown.reduce((s, d) => s + d.amount, 0)
+  const avgRate = totalHours > 0 ? grossPay / totalHours : getRateForDate(rates, formatDate(new Date()))
+
+  return {
+    employeeId,
+    employeeName,
+    totalHours: Math.round(totalHours * 100) / 100,
+    grossPay: Math.round(grossPay * 100) / 100,
+    hourlyRate: Math.round(avgRate * 100) / 100,
+    timeEntryIds: approved.map((e) => e.id),
+    dayBreakdown,
+  }
+}
+
+export function buildPayrollSnapshot(
+  employees: { uid: string; displayName: string }[],
+  entries: TimeEntry[],
+  ratesByEmployee: Map<string, EmployeeRate[]>,
+): PayrollLineItem[] {
+  const lines: PayrollLineItem[] = []
+  for (const emp of employees) {
+    const rates = ratesByEmployee.get(emp.uid) ?? []
+    const line = buildPayrollForEmployee(emp.uid, emp.displayName, entries, rates)
+    if (line) lines.push(line)
+  }
+  return lines.sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+}
+
+export function exportPayrollCsv(
+  run: { payPeriodStart: string; payPeriodEnd: string; entries: PayrollLineItem[] },
+  companyName: string,
+): string {
+  const header = ['Company', 'Pay Period Start', 'Pay Period End', 'Employee', 'Hours', 'Rate', 'Gross Pay']
+  const rows = run.entries.map((e) => [
+    companyName,
+    run.payPeriodStart,
+    run.payPeriodEnd,
+    e.employeeName,
+    e.totalHours.toFixed(2),
+    e.hourlyRate.toFixed(2),
+    e.grossPay.toFixed(2),
+  ])
+  return [header, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n')
+}

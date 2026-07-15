@@ -1,0 +1,131 @@
+import type { Timestamp } from 'firebase/firestore'
+
+export type UserRole = 'admin' | 'employee'
+
+export type TimeEntryStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
+
+export type PunchSource = 'button' | 'manual_edit'
+
+export interface UserProfile {
+  uid: string
+  email: string
+  displayName: string
+  role: UserRole
+  mustChangePassword?: boolean
+  currentHourlyRate?: number
+  createdBy?: string
+  status?: 'active' | 'inactive'
+  active?: boolean
+  createdAt?: Timestamp
+}
+
+export interface EditHistoryEntry {
+  editedAt: Timestamp
+  editedBy: string
+  editedByName: string
+  reason: string
+  previousClockIn?: string | null
+  previousClockOut?: string | null
+  newClockIn?: string | null
+  newClockOut?: string | null
+}
+
+export interface TimeEntry {
+  id: string
+  employeeId: string
+  employeeName: string
+  workDate: string
+  clockIn?: Timestamp | null
+  clockOut?: Timestamp | null
+  status: TimeEntryStatus
+  punchSource?: PunchSource
+  editHistory?: EditHistoryEntry[]
+  rejectionReason?: string
+  submittedAt?: Timestamp
+  approvedAt?: Timestamp
+  rejectedAt?: Timestamp
+  updatedAt?: Timestamp
+}
+
+export interface EmployeeRate {
+  id: string
+  employeeId: string
+  employeeName?: string
+  hourlyRate: number
+  effectiveFrom: string
+  createdAt?: Timestamp
+  createdBy?: string
+}
+
+export type PayPeriodStatus = 'open' | 'closed'
+
+export interface PayPeriod {
+  id: string
+  startDate: string
+  endDate: string
+  status: PayPeriodStatus
+  createdAt?: Timestamp
+  closedAt?: Timestamp
+}
+
+export type PayrollRunStatus = 'preview' | 'finalized'
+
+export interface PayrollLineItem {
+  employeeId: string
+  employeeName: string
+  totalHours: number
+  grossPay: number
+  hourlyRate: number
+  timeEntryIds: string[]
+  dayBreakdown: PaySlipDayLine[]
+}
+
+export interface PayrollRun {
+  id: string
+  payPeriodId: string
+  payPeriodStart: string
+  payPeriodEnd: string
+  status: PayrollRunStatus
+  entries: PayrollLineItem[]
+  totalGross: number
+  totalHours: number
+  createdAt?: Timestamp
+  finalizedAt?: Timestamp
+  createdBy?: string
+}
+
+export interface PaySlipDayLine {
+  workDate: string
+  hours: number
+  rate: number
+  amount: number
+}
+
+export interface PaySlip {
+  id: string
+  paySlipNumber: string
+  employeeId: string
+  employeeName: string
+  employeeEmail: string
+  payPeriodId: string
+  payPeriodStart: string
+  payPeriodEnd: string
+  payrollRunId: string
+  totalHours: number
+  hourlyRate: number
+  grossPay: number
+  payDate: string
+  companyName: string
+  companyAddress?: string
+  lineItems: PaySlipDayLine[]
+  createdAt?: Timestamp
+}
+
+export interface CompanySettings {
+  companyName: string
+  address?: string
+  phone?: string
+  email?: string
+  paySlipCounterYear?: number
+  paySlipCounter?: number
+}

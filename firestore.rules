@@ -1,0 +1,98 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model — prototype rules; review before production
+    // ===============================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userDoc().data.role == 'admin';
+    }
+
+    function isEmployee() {
+      return isSignedIn() && userDoc().data.role == 'employee';
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function validEditReason(reason) {
+      return reason is string && reason.size() >= 10;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow create: if false;
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        isEmployee() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+      );
+      allow delete: if false;
+    }
+
+    match /timeEntries/{entryId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        (isEmployee() && resource.data.employeeId == request.auth.uid)
+      );
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        (isEmployee() && request.resource.data.employeeId == request.auth.uid)
+      );
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (
+          isEmployee() &&
+          resource.data.employeeId == request.auth.uid &&
+          resource.data.status in ['draft', 'submitted']
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /employeeRates/{rateId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /payPeriods/{periodId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /payrollRuns/{runId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /paySlips/{slipId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        (isEmployee() && resource.data.employeeId == request.auth.uid)
+      );
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /mail/{mailId} {
+      allow read, write: if false;
+    }
+  }
+}

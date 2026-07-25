@@ -4,6 +4,7 @@ import {
   collection,
   getDocs,
   addDoc,
+  deleteDoc,
   doc,
   getDoc,
   query,
@@ -59,6 +60,7 @@ export function PayrollRunsPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [finalizeTarget, setFinalizeTarget] = useState<PayrollRun | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<PayrollRun | null>(null)
   const [emailOnFinalize, setEmailOnFinalize] = useState(true)
 
   const load = async () => {
@@ -67,6 +69,11 @@ export function PayrollRunsPage() {
     )
     const periodList = periodSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayPeriod)
     setPeriods(periodList)
+
+    const openPeriods = periodList.filter((p) => p.status === 'open')
+    setSelectedPeriodId((current) =>
+      openPeriods.some((p) => p.id === current) ? current : openPeriods[0]?.id ?? '',
+    )
 
     const runSnap = await getDocs(
       query(collection(db, 'payrollRuns'), orderBy('createdAt', 'desc')),
@@ -240,6 +247,7 @@ export function PayrollRunsPage() {
           payDate: run.payPeriodEnd,
           companyName: settings.companyName,
           companyAddress: settings.address ?? '',
+          companyPhone: settings.phone ?? '',
           lineItems: line.dayBreakdown,
           generatedAt: serverTimestamp(),
           generatedBy: user?.uid,
@@ -249,6 +257,11 @@ export function PayrollRunsPage() {
       batch.update(doc(db, 'payrollRuns', run.id), {
         status: 'finalized',
         finalizedAt: serverTimestamp(),
+      })
+
+      batch.update(doc(db, 'payPeriods', run.payPeriodId), {
+        status: 'closed',
+        closedAt: serverTimestamp(),
       })
 
       batch.set(payrollSettingsRef, {
@@ -262,9 +275,9 @@ export function PayrollRunsPage() {
         const result = await apiPost<{ success: boolean; count: number }>('/api/email/payslip-batch', {
           payrollRunId: run.id,
         })
-        setSuccess(`Payroll finalized. ${result.count} pay slip email(s) sent.`)
+        setSuccess(`Payroll finalized. ${result.count} pay slip email(s) sent. Pay period closed.`)
       } else {
-        setSuccess('Payroll finalized and pay slips generated.')
+        setSuccess('Payroll finalized, pay slips generated, and pay period closed.')
       }
 
       setFinalizeTarget(null)
@@ -272,6 +285,24 @@ export function PayrollRunsPage() {
       await load()
     } catch (err) {
       setError(getCallableErrorMessage(err, 'Failed to finalize payroll.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDeletePreview = async (run: PayrollRun) => {
+    if (run.status !== 'preview') return
+    setBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      await deleteDoc(doc(db, 'payrollRuns', run.id))
+      if (preview?.id === run.id) setPreview(null)
+      setDeleteTarget(null)
+      setSuccess('Preview payroll run deleted.')
+      await load()
+    } catch {
+      setError('Failed to delete preview payroll run.')
     } finally {
       setBusy(false)
     }
@@ -289,6 +320,7 @@ export function PayrollRunsPage() {
 
   if (loading) return <LoadingSpinner />
 
+  const openPeriods = periods.filter((p) => p.status === 'open')
   const displayRun = preview ?? runs.find((r) => r.status === 'preview') ?? null
 
   return (
@@ -305,13 +337,20 @@ export function PayrollRunsPage() {
             value={selectedPeriodId}
             onChange={(e) => setSelectedPeriodId(e.target.value)}
           >
-            <option value="">Select a period</option>
-            {periods.map((p) => (
+            <option value="">
+              {openPeriods.length === 0 ? 'No open pay periods' : 'Select a period'}
+            </option>
+            {openPeriods.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.startDate} – {p.endDate} ({p.status})
+                {p.startDate} – {p.endDate}
               </option>
             ))}
           </select>
+          {openPeriods.length === 0 && (
+            <p className="mt-2 text-sm text-slate-600">
+              Reopen a closed pay period on the Pay Periods page to run supplemental payroll.
+            </p>
+          )}
         </div>
 
         <fieldset className="space-y-2">
@@ -430,14 +469,24 @@ export function PayrollRunsPage() {
                   />
                   Email pay slips to employees after finalizing
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setFinalizeTarget(displayRun)}
-                  disabled={busy}
-                  className="btn-primary"
-                >
-                  Finalize & Generate Pay Slips
-                </button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(displayRun)}
+                    disabled={busy}
+                    className="btn-danger"
+                  >
+                    Delete Preview
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFinalizeTarget(displayRun)}
+                    disabled={busy}
+                    className="btn-primary"
+                  >
+                    Finalize & Generate Pay Slips
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -478,6 +527,33 @@ export function PayrollRunsPage() {
       )}
 
       <section className="mt-10">
+        <h2 className="text-lg font-semibold">Preview Runs</h2>
+        {runs.filter((r) => r.status === 'preview').length === 0 ? (
+          <p className="mt-4 text-sm text-slate-600">No preview runs.</p>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {runs.filter((r) => r.status === 'preview').map((r) => (
+              <li key={r.id} className="card flex flex-wrap items-center justify-between gap-2 py-3">
+                <div>
+                  <p>{formatPayrollRunLabel(r)}</p>
+                  <StatusBadge status={r.status} />
+                </div>
+                <span className="font-semibold">{formatCurrency(r.totalGross)}</span>
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(r)}
+                  disabled={busy}
+                  className="btn-danger text-xs"
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-10">
         <h2 className="text-lg font-semibold">Past Runs</h2>
         <ul className="mt-4 space-y-2">
           {runs.filter((r) => r.status === 'finalized').map((r) => (
@@ -499,6 +575,21 @@ export function PayrollRunsPage() {
           ))}
         </ul>
       </section>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete preview payroll?"
+        description={
+          deleteTarget
+            ? `This will permanently delete the preview for ${formatPayrollRunLabel(deleteTarget)}. No pay slips will be affected.`
+            : ''
+        }
+        confirmLabel="Delete"
+        variant="danger"
+        busy={busy}
+        onConfirm={() => deleteTarget && void handleDeletePreview(deleteTarget)}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
       <ConfirmDialog
         open={finalizeTarget !== null}

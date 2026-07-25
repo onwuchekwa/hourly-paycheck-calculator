@@ -8,6 +8,7 @@ import {
   query,
   orderBy,
   serverTimestamp,
+  deleteField,
 } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import type { PayPeriod } from '../../lib/types'
@@ -73,12 +74,31 @@ export function PayPeriodsPage() {
     await load()
   }
 
+  const handleReopen = async (id: string) => {
+    setError('')
+    if (periods.some((p) => p.status === 'open')) {
+      setError('Close the current open pay period before reopening another.')
+      return
+    }
+    await updateDoc(doc(db, 'payPeriods', id), {
+      status: 'open',
+      closedAt: deleteField(),
+    })
+    await load()
+  }
+
   if (loading) return <LoadingSpinner />
 
   return (
     <div>
       <h1 className="page-title">Pay Periods</h1>
-      <p className="page-subtitle">Manage pay periods — only one can be open at a time.</p>
+      <p className="page-subtitle">
+        Manage pay periods — only one can be open at a time. Reopen a closed period to run supplemental payroll.
+      </p>
+
+      {error && (
+        <div role="alert" className="mt-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
+      )}
 
       {!hasOpen && (
         <form onSubmit={handleCreate} className="card mt-6 max-w-lg space-y-4">
@@ -103,6 +123,11 @@ export function PayPeriodsPage() {
             {p.status === 'open' && (
               <button type="button" onClick={() => handleClose(p.id)} className="btn-secondary text-xs">
                 Close Period
+              </button>
+            )}
+            {p.status === 'closed' && (
+              <button type="button" onClick={() => handleReopen(p.id)} className="btn-secondary text-xs">
+                Reopen Period
               </button>
             )}
           </div>

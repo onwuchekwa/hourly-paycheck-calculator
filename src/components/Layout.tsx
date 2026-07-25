@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { classNames } from '../lib/utils'
 import { isAdminRole } from '../lib/roles'
 
@@ -30,6 +31,7 @@ const adminNav: NavItem[] = [
 
 export function Layout() {
   const { profile, logout } = useAuth()
+  const { appTitle } = useCompanySettings()
   const navigate = useNavigate()
   const nav = isAdminRole(profile?.role) ? adminNav : employeeNav
   const basePath = isAdminRole(profile?.role) ? '/admin' : '/employee'
@@ -50,7 +52,7 @@ export function Layout() {
       <header className="no-print border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
           <Link to={basePath} className="text-lg font-bold text-brand-800">
-            HourlyPay
+            {appTitle}
           </Link>
           <nav aria-label="Main navigation" className="hidden gap-1 md:flex">
             {nav.map((item) => (

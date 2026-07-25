@@ -1,10 +1,12 @@
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { adminHomePath } from '../lib/roles'
 
 export function HomePage() {
   const { user, profile, loading } = useAuth()
+  const { appTitle } = useCompanySettings()
 
   if (loading) return <LoadingSpinner fullPage />
 
@@ -16,7 +18,7 @@ export function HomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50 to-white">
       <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
-        <span className="text-xl font-bold text-brand-800">HourlyPay</span>
+        <span className="text-xl font-bold text-brand-800">{appTitle}</span>
         <Link to="/login" className="btn-primary">
           Sign in
         </Link>
@@ -71,7 +73,7 @@ export function HomePage() {
       </main>
 
       <footer className="border-t border-slate-200 py-8 text-center text-sm text-slate-500">
-        HourlyPay — Employer-managed payroll for hourly teams
+        {appTitle} — Employer-managed payroll for hourly teams
       </footer>
     </div>
   )

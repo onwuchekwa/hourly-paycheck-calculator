@@ -2,10 +2,12 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import type { CompanySettings } from '../../lib/types'
+import { useCompanySettings } from '../../contexts/CompanySettingsContext'
 import { AlertBanner } from '../../components/AlertBanner'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
 export function CompanySettingsPage() {
+  const { refreshSettings } = useCompanySettings()
   const [settings, setSettings] = useState<CompanySettings>({
     companyName: '',
     address: '',
@@ -40,6 +42,7 @@ export function CompanySettingsPage() {
     setMessage('')
     try {
       await setDoc(doc(db, 'settings', 'company'), settings, { merge: true })
+      await refreshSettings()
       setMessageVariant('success')
       setMessage('Settings saved.')
     } catch {
@@ -55,7 +58,7 @@ export function CompanySettingsPage() {
   return (
     <div>
       <h1 className="page-title">Company Settings</h1>
-      <p className="page-subtitle">Configure company details for pay slips, reports, and outgoing email reply-to.</p>
+      <p className="page-subtitle">Configure company details for pay slips, reports, and the site title.</p>
 
       <form onSubmit={handleSave} className="card mt-8 max-w-lg space-y-4">
         {message && <AlertBanner variant={messageVariant}>{message}</AlertBanner>}

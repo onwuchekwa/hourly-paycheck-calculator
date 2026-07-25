@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import type { PaySlip } from '../lib/types'
+import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
 
 interface PaySlipDocumentProps {
@@ -11,6 +12,11 @@ interface PaySlipDocumentProps {
 
 export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocumentProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const { settings } = useCompanySettings()
+
+  const companyName = paySlip.companyName || settings.companyName
+  const companyAddress = paySlip.companyAddress || settings.address
+  const companyPhone = paySlip.companyPhone || settings.phone
 
   const handlePrint = () => window.print()
 
@@ -39,9 +45,12 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
       )}
       <div ref={ref} className="card max-w-2xl print:border-0 print:shadow-none">
         <div className="border-b border-slate-200 pb-4 mb-4">
-          <h2 className="text-xl font-bold text-slate-900">{paySlip.companyName}</h2>
-          {paySlip.companyAddress && (
-            <p className="text-sm text-slate-600">{paySlip.companyAddress}</p>
+          <h2 className="text-xl font-bold text-slate-900">{companyName}</h2>
+          {companyAddress && (
+            <p className="mt-1 whitespace-pre-line text-sm text-slate-600">{companyAddress}</p>
+          )}
+          {companyPhone && (
+            <p className="mt-1 text-sm text-slate-600">{companyPhone}</p>
           )}
           <p className="mt-2 text-sm font-semibold text-brand-700">
             Pay Slip {paySlip.paySlipNumber}

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { AlertBanner } from '../components/AlertBanner'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { useFirebaseEmulators } from '../lib/firebase-config'
@@ -9,6 +10,7 @@ import { adminHomePath } from '../lib/roles'
 
 export function LoginPage() {
   const { login, user, profile, loading } = useAuth()
+  const { appTitle } = useCompanySettings()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -64,7 +66,7 @@ export function LoginPage() {
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <Link to="/" className="text-xl font-bold text-brand-800">
-            HourlyPay
+            {appTitle}
           </Link>
           <h1 className="mt-4 text-2xl font-bold text-slate-900">Sign in</h1>
           <p className="mt-1 text-sm text-slate-600">

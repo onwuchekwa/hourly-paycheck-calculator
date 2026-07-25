@@ -151,6 +151,7 @@ export interface PaySlip {
   payDate: string
   companyName: string
   companyAddress?: string
+  companyPhone?: string
   lineItems: PaySlipDayLine[]
   createdAt?: Timestamp
 }

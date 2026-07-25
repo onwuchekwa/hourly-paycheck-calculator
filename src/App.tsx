@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { CompanySettingsProvider } from './contexts/CompanySettingsContext'
+import { DocumentTitle } from './components/DocumentTitle'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/Layout'
 import { HomePage } from './pages/HomePage'
@@ -23,8 +25,10 @@ import { ReportsPage } from './pages/admin/ReportsPage'
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <CompanySettingsProvider>
+      <DocumentTitle />
+      <AuthProvider>
+        <BrowserRouter>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -59,6 +63,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </CompanySettingsProvider>
   )
 }
 

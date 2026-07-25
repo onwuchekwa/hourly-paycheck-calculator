@@ -19,6 +19,7 @@ import { getCallableErrorMessage } from '../../lib/errors'
 import { AlertBanner } from '../../components/AlertBanner'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
+import { PageHeader, ResponsiveTable, type ResponsiveTableColumn } from '../../components/ui'
 
 export function EmployeesPage() {
   const { user } = useAuth()
@@ -166,17 +167,59 @@ export function EmployeesPage() {
 
   if (loading) return <LoadingSpinner />
 
+  const employeeColumns: ResponsiveTableColumn<UserProfile>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      render: (e) => <span className="font-medium">{e.displayName}</span>,
+    },
+    {
+      key: 'email',
+      header: 'Email',
+      render: (e) => e.email,
+    },
+    {
+      key: 'rate',
+      header: 'Current rate',
+      mobileLabel: 'Rate',
+      render: (e) => `${formatCurrency(e.currentHourlyRate ?? 0)}/hr`,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (e) => (e.active !== false ? 'Active' : 'Inactive'),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (e) => (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => openRateModal(e)} className="btn-secondary text-xs">
+            Change rate
+          </button>
+          <button
+            type="button"
+            onClick={() => (e.active !== false ? setDeactivateTarget(e) : toggleActive(e))}
+            className="btn-secondary text-xs"
+          >
+            {e.active !== false ? 'Deactivate' : 'Reactivate'}
+          </button>
+        </div>
+      ),
+    },
+  ]
+
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="page-title">Employees</h1>
-          <p className="page-subtitle">Create and manage employee accounts and hourly rates.</p>
-        </div>
-        <button type="button" onClick={() => setShowForm(!showForm)} className="btn-primary">
-          {showForm ? 'Cancel' : 'Add Employee'}
-        </button>
-      </div>
+      <PageHeader
+        title="Employees"
+        subtitle="Create and manage employee accounts and hourly rates."
+        actions={
+          <button type="button" onClick={() => setShowForm(!showForm)} className="btn-primary">
+            {showForm ? 'Cancel' : 'Add Employee'}
+          </button>
+        }
+      />
 
       {!isApiConfigured() && (
         <AlertBanner variant="error" className="mt-6">
@@ -221,42 +264,13 @@ export function EmployeesPage() {
         </form>
       )}
 
-      <div className="mt-8 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
-              <th className="pb-3 pr-4 font-medium">Name</th>
-              <th className="pb-3 pr-4 font-medium">Email</th>
-              <th className="pb-3 pr-4 font-medium">Current rate</th>
-              <th className="pb-3 pr-4 font-medium">Status</th>
-              <th className="pb-3 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((e) => (
-              <tr key={e.uid} className="border-b border-slate-100">
-                <td className="py-3 pr-4 font-medium">{e.displayName}</td>
-                <td className="py-3 pr-4">{e.email}</td>
-                <td className="py-3 pr-4">{formatCurrency(e.currentHourlyRate ?? 0)}/hr</td>
-                <td className="py-3 pr-4">{e.active !== false ? 'Active' : 'Inactive'}</td>
-                <td className="py-3">
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => openRateModal(e)} className="btn-secondary text-xs">
-                      Change rate
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => (e.active !== false ? setDeactivateTarget(e) : toggleActive(e))}
-                      className="btn-secondary text-xs"
-                    >
-                      {e.active !== false ? 'Deactivate' : 'Reactivate'}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="mt-8">
+        <ResponsiveTable
+          columns={employeeColumns}
+          rows={filtered}
+          keyField="uid"
+          emptyMessage="No employees match your search."
+        />
       </div>
 
       <ConfirmDialog

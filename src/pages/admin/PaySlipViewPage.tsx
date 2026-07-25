@@ -12,6 +12,7 @@ import { AlertBanner } from '../../components/AlertBanner'
 import { PaySlipDocument } from '../../components/PaySlipDocument'
 import { PaySlipSummaryTable } from '../../components/PaySlipSummaryTable'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
+import { EmptyState, PageHeader } from '../../components/ui'
 
 export function PaySlipViewPage() {
   const [searchParams] = useSearchParams()
@@ -79,17 +80,21 @@ export function PaySlipViewPage() {
 
   return (
     <div>
-      <h1 className="page-title">Pay Slips</h1>
-      <p className="page-subtitle">
-        {runId
-          ? 'Payroll run summary by employee. Open details to print or email an individual pay slip.'
-          : 'Summary of all generated pay slips. Open details to print or email an individual pay slip.'}
-      </p>
+      <PageHeader
+        title="Pay Slips"
+        subtitle={
+          runId
+            ? 'Payroll run summary by employee. Open details to print or email an individual pay slip.'
+            : 'Summary of all generated pay slips. Open details to print or email an individual pay slip.'
+        }
+      />
 
       {loadError && <AlertBanner variant="error" className="mt-4">{loadError}</AlertBanner>}
 
       {slips.length === 0 && !loadError ? (
-        <p className="mt-8 text-slate-600">No pay slips found.</p>
+        <div className="mt-8">
+          <EmptyState title="No pay slips found" />
+        </div>
       ) : (
         <div className="mt-8 space-y-6">
           <div className="card">

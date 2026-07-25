@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
+import { MobileDrawer } from './ui/MobileDrawer'
 import { classNames } from '../lib/utils'
 import { isAdminRole } from '../lib/roles'
 
@@ -55,7 +56,7 @@ function navLinkClass(isActive: boolean) {
 
 function mobileNavLinkClass(isActive: boolean) {
   return classNames(
-    'block rounded-lg px-3 py-2.5 text-sm font-medium transition',
+    'block rounded-lg px-3 py-3 text-base font-medium transition',
     isActive
       ? 'bg-brand-50 text-brand-700'
       : 'text-slate-700 hover:bg-slate-50',
@@ -129,7 +130,7 @@ function PayrollMenu() {
 function UserBadge({ name }: { name: string }) {
   const initial = name.trim().charAt(0).toUpperCase() || '?'
   return (
-    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-800">
+    <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-800">
       {initial}
     </span>
   )
@@ -151,7 +152,7 @@ function HamburgerButton({
       aria-expanded={open}
       aria-controls={controlsId}
       aria-label={open ? 'Close menu' : 'Open menu'}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700 transition hover:bg-slate-50 lg:hidden"
+      className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 text-slate-700 transition hover:bg-slate-50 lg:hidden"
     >
       <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
         {open ? (
@@ -168,104 +169,67 @@ function HamburgerButton({
   )
 }
 
-interface MobileNavProps {
-  id: string
-  open: boolean
-  isAdmin: boolean
-  basePath: string
-  displayName?: string
-  onNavigate: () => void
-  onLogout: () => void
-}
-
-function MobileNav({
-  id,
-  open,
+function MobileNavLinks({
   isAdmin,
   basePath,
-  displayName,
   onNavigate,
-  onLogout,
-}: MobileNavProps) {
-  if (!open) return null
-
+}: {
+  isAdmin: boolean
+  basePath: string
+  onNavigate: () => void
+}) {
   return (
-    <nav
-      id={id}
-      aria-label="Mobile navigation"
-      className="border-t border-slate-200 bg-white px-4 py-4 lg:hidden"
-    >
-      <div className="space-y-1">
-        {isAdmin ? (
-          <>
-            {adminPrimaryNav.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/admin'}
-                onClick={onNavigate}
-                className={({ isActive }) => mobileNavLinkClass(isActive)}
-              >
-                {item.label}
-              </NavLink>
-            ))}
-            <p className="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              {adminPayrollNav.label}
-            </p>
-            {adminPayrollNav.items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={onNavigate}
-                className={({ isActive }) => mobileNavLinkClass(isActive)}
-              >
-                {item.label}
-              </NavLink>
-            ))}
-            {adminSecondaryNav.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={onNavigate}
-                className={({ isActive }) => mobileNavLinkClass(isActive)}
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </>
-        ) : (
-          employeeNav.map((item) => (
+    <nav aria-label="Mobile navigation" className="space-y-1">
+      {isAdmin ? (
+        <>
+          {adminPrimaryNav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
-              end={item.to === basePath}
+              end={item.to === '/admin'}
               onClick={onNavigate}
               className={({ isActive }) => mobileNavLinkClass(isActive)}
             >
               {item.label}
             </NavLink>
-          ))
-        )}
-      </div>
-
-      <div className="mt-4 border-t border-slate-200 pt-4">
-        {displayName && (
-          <div className="mb-3 flex items-center gap-3 px-3">
-            <UserBadge name={displayName} />
-            <div>
-              <p className="text-sm font-medium text-slate-900">{displayName}</p>
-              <p className="text-xs text-slate-500">{isAdmin ? 'Employer' : 'Employee'}</p>
-            </div>
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={onLogout}
-          className="btn-secondary w-full justify-center"
-        >
-          Sign out
-        </button>
-      </div>
+          ))}
+          <p className="px-3 pt-4 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            {adminPayrollNav.label}
+          </p>
+          {adminPayrollNav.items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={onNavigate}
+              className={({ isActive }) => mobileNavLinkClass(isActive)}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+          {adminSecondaryNav.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={onNavigate}
+              className={({ isActive }) => mobileNavLinkClass(isActive)}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </>
+      ) : (
+        employeeNav.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === basePath}
+            onClick={onNavigate}
+            className={({ isActive }) => mobileNavLinkClass(isActive)}
+          >
+            {item.label}
+          </NavLink>
+        ))
+      )}
     </nav>
   )
 }
@@ -284,17 +248,6 @@ export function Layout() {
     setMobileOpen(false)
   }, [location.pathname])
 
-  useEffect(() => {
-    if (!mobileOpen) return
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMobileOpen(false)
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [mobileOpen])
-
   const handleLogout = async () => {
     setMobileOpen(false)
     await logout()
@@ -302,7 +255,7 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-surface-muted">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-white"
@@ -311,16 +264,16 @@ export function Layout() {
       </a>
       <header className="no-print sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3 lg:flex-none">
             <HamburgerButton
               open={mobileOpen}
               onClick={() => setMobileOpen((value) => !value)}
               controlsId={mobileMenuId}
             />
-            <Link to={basePath} className="min-w-0 shrink-0">
-              <span className="block truncate text-base font-bold text-brand-900">{appTitle}</span>
+            <Link to={basePath} className="min-w-0 shrink">
+              <span className="block truncate text-base font-bold text-brand-950">{appTitle}</span>
               {isAdmin && (
-                <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                <span className="hidden text-xs font-medium uppercase tracking-wide text-slate-500 sm:block">
                   Employer Portal
                 </span>
               )}
@@ -376,18 +329,38 @@ export function Layout() {
             </button>
           </div>
         </div>
+      </header>
 
-        <MobileNav
-          id={mobileMenuId}
-          open={mobileOpen}
+      <MobileDrawer
+        id={mobileMenuId}
+        open={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        title="Menu"
+        footer={
+          <div className="space-y-3">
+            {profile?.displayName && (
+              <div className="flex items-center gap-3 px-1">
+                <UserBadge name={profile.displayName} />
+                <div>
+                  <p className="text-sm font-medium text-slate-900">{profile.displayName}</p>
+                  <p className="text-xs text-slate-500">{isAdmin ? 'Employer' : 'Employee'}</p>
+                </div>
+              </div>
+            )}
+            <button type="button" onClick={handleLogout} className="btn-secondary w-full">
+              Sign out
+            </button>
+          </div>
+        }
+      >
+        <MobileNavLinks
           isAdmin={isAdmin}
           basePath={basePath}
-          displayName={profile?.displayName}
           onNavigate={() => setMobileOpen(false)}
-          onLogout={handleLogout}
         />
-      </header>
-      <main id="main-content" className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      </MobileDrawer>
+
+      <main id="main-content" className="mx-auto max-w-7xl px-4 py-6 pb-safe sm:px-6 sm:py-8">
         <Outlet />
       </main>
     </div>

@@ -14,6 +14,8 @@ import {
   removePunchAtIndex,
 } from '../../lib/timeEntries'
 import { formatDisplayDate, formatTime } from '../../lib/utils'
+import { EmptyState, PageHeader } from '../../components/ui'
+import { AlertBanner } from '../../components/AlertBanner'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -81,19 +83,24 @@ export function TimeHistoryPage() {
 
   return (
     <div>
-      <h1 className="page-title">Time History</h1>
-      <p className="page-subtitle">All your recorded time entries.</p>
+      <PageHeader title="Time History" subtitle="All your recorded time entries." />
 
-      {error && (
-        <div role="alert" className="mt-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-          {error}
-        </div>
-      )}
+      {error && <AlertBanner variant="error" className="mt-6">{error}</AlertBanner>}
 
       {entries.length === 0 ? (
-        <p className="mt-8 text-slate-600">No time entries yet.</p>
+        <div className="mt-6 sm:mt-8">
+          <EmptyState
+            title="No time entries yet"
+            description="Clock in on the timesheet to start recording your hours."
+            action={
+              <Link to="/employee/timesheet" className="btn-primary">
+                Go to Timesheet
+              </Link>
+            }
+          />
+        </div>
       ) : (
-        <div className="mt-8 space-y-4">
+        <div className="mt-6 stack-cards sm:mt-8">
           {entries.map((e) => {
             const punches = getPunches(e)
             const deletable = canDeleteEntry(e)

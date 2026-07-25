@@ -5,6 +5,7 @@ import type { PaySlip } from '../lib/types'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { resolveCompanyField, resolveCompanyName } from '../lib/companyBranding'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
+import { ResponsiveTable, type ResponsiveTableColumn } from './ui/ResponsiveTable'
 
 interface PaySlipDocumentProps {
   paySlip: PaySlip
@@ -31,6 +32,32 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
     pdf.addImage(img, 'PNG', 0, 0, w, h)
     pdf.save(`${paySlip.paySlipNumber}.pdf`)
   }
+
+  const lineColumns: ResponsiveTableColumn<(typeof paySlip.lineItems)[number]>[] = [
+    {
+      key: 'date',
+      header: 'Date',
+      render: (line) => formatDisplayDate(line.workDate),
+    },
+    {
+      key: 'hours',
+      header: 'Hours',
+      align: 'right',
+      render: (line) => formatDecimalHours(line.hours),
+    },
+    {
+      key: 'rate',
+      header: 'Rate',
+      align: 'right',
+      render: (line) => formatCurrency(line.rate),
+    },
+    {
+      key: 'amount',
+      header: 'Amount',
+      align: 'right',
+      render: (line) => formatCurrency(line.amount),
+    },
+  ]
 
   return (
     <div>
@@ -77,26 +104,11 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
             <dd className="font-medium">{formatDecimalHours(paySlip.totalHours)}</dd>
           </div>
         </dl>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
-              <th className="pb-2 font-medium">Date</th>
-              <th className="pb-2 font-medium text-right">Hours</th>
-              <th className="pb-2 font-medium text-right">Rate</th>
-              <th className="pb-2 font-medium text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paySlip.lineItems.map((line) => (
-              <tr key={line.workDate} className="border-b border-slate-100">
-                <td className="py-2">{formatDisplayDate(line.workDate)}</td>
-                <td className="py-2 text-right">{formatDecimalHours(line.hours)}</td>
-                <td className="py-2 text-right">{formatCurrency(line.rate)}</td>
-                <td className="py-2 text-right">{formatCurrency(line.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
+        <ResponsiveTable
+          columns={lineColumns}
+          rows={paySlip.lineItems}
+          keyField="workDate"
+          footer={
             <tr>
               <td colSpan={3} className="pt-4 text-right font-semibold">
                 Gross Pay
@@ -105,8 +117,8 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
                 {formatCurrency(paySlip.grossPay)}
               </td>
             </tr>
-          </tfoot>
-        </table>
+          }
+        />
       </div>
     </div>
   )

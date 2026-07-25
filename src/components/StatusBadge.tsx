@@ -23,7 +23,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   return (
     <span
       className={classNames(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ring-1 ring-inset',
+        'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold capitalize ring-1 ring-inset sm:py-0.5',
         style,
         className,
       )}

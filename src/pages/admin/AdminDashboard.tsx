@@ -4,6 +4,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import type { PayPeriod } from '../../lib/types'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
+import { PageHeader, StatCard } from '../../components/ui'
 
 export function AdminDashboard() {
   const [employeeCount, setEmployeeCount] = useState(0)
@@ -39,30 +40,30 @@ export function AdminDashboard() {
 
   return (
     <div>
-      <h1 className="page-title">Admin Dashboard</h1>
-      <p className="page-subtitle">Overview of your payroll operations.</p>
+      <PageHeader
+        title="Admin Dashboard"
+        subtitle="Overview of your payroll operations."
+      />
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <div className="card">
-          <p className="text-sm text-slate-500">Active Employees</p>
-          <p className="mt-1 text-2xl font-bold">{employeeCount}</p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-slate-500">Pending Time Review</p>
-          <p className="mt-1 text-2xl font-bold text-amber-700">{pendingReview}</p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-slate-500">Open Pay Period</p>
-          <p className="mt-1 text-lg font-bold">
-            {openPeriod ? `${openPeriod.startDate} – ${openPeriod.endDate}` : 'None'}
-          </p>
-        </div>
+      <div className="mt-6 grid gap-4 sm:mt-8 sm:grid-cols-3">
+        <StatCard label="Active Employees" value={employeeCount} />
+        <StatCard label="Pending Time Review" value={pendingReview} accent="warning" />
+        <StatCard
+          label="Open Pay Period"
+          value={openPeriod ? `${openPeriod.startDate} – ${openPeriod.endDate}` : 'None'}
+        />
       </div>
 
-      <div className="mt-8 flex flex-wrap gap-3">
-        <Link to="/admin/employees" className="btn-primary">Manage Employees</Link>
-        <Link to="/admin/time-review" className="btn-secondary">Review Time</Link>
-        <Link to="/admin/payroll" className="btn-secondary">Run Payroll</Link>
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:flex sm:flex-wrap">
+        <Link to="/admin/employees" className="btn-primary col-span-2 sm:col-span-1">
+          Manage Employees
+        </Link>
+        <Link to="/admin/time-review" className="btn-secondary">
+          Review Time
+        </Link>
+        <Link to="/admin/payroll" className="btn-secondary">
+          Run Payroll
+        </Link>
       </div>
     </div>
   )

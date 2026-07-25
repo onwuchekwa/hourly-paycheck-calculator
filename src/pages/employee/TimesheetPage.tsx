@@ -43,6 +43,8 @@ import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { DeleteIcon, EditIcon, IconButton } from '../../components/IconButton'
+import { PageHeader } from '../../components/ui'
+import { AlertBanner } from '../../components/AlertBanner'
 
 export function TimesheetPage() {
   const { profile, user } = useAuth()
@@ -302,12 +304,14 @@ export function TimesheetPage() {
 
   if (loading) return <LoadingSpinner />
 
-  return (
-    <div>
-      <h1 className="page-title">Timesheet</h1>
-      <p className="page-subtitle">Record your work hours for each day.</p>
+  const showSubmit = normalizedEntry && canSubmitForReview(normalizedEntry)
+  const hasMobileActions = !readOnly && (showClockIn || showClockOut || showSubmit)
 
-      <div className="mt-8 max-w-lg space-y-6">
+  return (
+    <div className={hasMobileActions ? 'pb-28 lg:pb-0' : undefined}>
+      <PageHeader title="Timesheet" subtitle="Record your work hours for each day." />
+
+      <div className="mt-6 max-w-lg space-y-5 sm:mt-8 sm:space-y-6">
         <DatePicker
           label="Work date"
           value={workDate}
@@ -323,15 +327,13 @@ export function TimesheetPage() {
         )}
 
         {entry?.rejectionReason && (
-          <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-            Rejected: {entry.rejectionReason}
-          </div>
+          <AlertBanner variant="error">Rejected: {entry.rejectionReason}</AlertBanner>
         )}
 
         {hasGlobalOpen && globalOpenEntryId !== docId && (
-          <div role="status" className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <AlertBanner variant="warning">
             You have an open session on another date. Use Clock Out to close it before starting a new session.
-          </div>
+          </AlertBanner>
         )}
 
         <div className="card space-y-4">
@@ -432,14 +434,10 @@ export function TimesheetPage() {
             </div>
           )}
 
-          {error && (
-            <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-              {error}
-            </div>
-          )}
+          {error && <AlertBanner variant="error">{error}</AlertBanner>}
 
           {!readOnly && (
-            <div className="flex flex-wrap gap-2">
+            <div className="hidden flex-wrap gap-2 lg:flex">
               {showClockIn && (
                 <button type="button" onClick={handleClockIn} disabled={busy} className="btn-primary">
                   Clock In
@@ -450,7 +448,7 @@ export function TimesheetPage() {
                   Clock Out{openOnThisDay ? '' : ' (open session)'}
                 </button>
               )}
-              {normalizedEntry && canSubmitForReview(normalizedEntry) && (
+              {showSubmit && (
                 <button type="button" onClick={handleSubmit} disabled={busy} className="btn-secondary">
                   {entry?.status === 'rejected' ? 'Resubmit for Review' : 'Submit for Review'}
                 </button>
@@ -465,6 +463,28 @@ export function TimesheetPage() {
           </p>
         )}
       </div>
+
+      {hasMobileActions && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-4 pb-safe shadow-[0_-4px_20px_rgba(15,23,42,0.08)] backdrop-blur-sm lg:hidden">
+          <div className="mx-auto flex max-w-lg flex-col gap-2">
+            {showClockIn && (
+              <button type="button" onClick={handleClockIn} disabled={busy} className="btn-primary w-full">
+                Clock In
+              </button>
+            )}
+            {showClockOut && (
+              <button type="button" onClick={handleClockOut} disabled={busy} className="btn-primary w-full">
+                Clock Out{openOnThisDay ? '' : ' (open session)'}
+              </button>
+            )}
+            {showSubmit && (
+              <button type="button" onClick={handleSubmit} disabled={busy} className="btn-secondary w-full">
+                {entry?.status === 'rejected' ? 'Resubmit for Review' : 'Submit for Review'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={deleteSessionIndex !== null}

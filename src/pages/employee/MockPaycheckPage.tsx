@@ -10,6 +10,8 @@ import { DatePicker } from '../../components/DatePicker'
 import { MockPaycheckPreviewCard } from '../../components/MockPaycheckPreview'
 import { OfficialPayrollPreview } from '../../components/OfficialPayrollPreview'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
+import { PageHeader, RadioCardGroup } from '../../components/ui'
+import { AlertBanner } from '../../components/AlertBanner'
 
 type EarningsViewMode = 'official' | 'estimated'
 
@@ -211,51 +213,33 @@ export function MockPaycheckPage() {
 
   return (
     <div>
-      <h1 className="page-title">Earnings Preview</h1>
-      <p className="page-subtitle">
-        View official pay for a pay period or estimate earnings for a custom date range.
-      </p>
+      <PageHeader
+        title="Earnings Preview"
+        subtitle="View official pay for a pay period or estimate earnings for a custom date range."
+      />
 
-      <div className="card mt-8 max-w-lg space-y-5">
-        <fieldset className="space-y-2">
-          <legend className="label-field">View</legend>
-          <label className="flex items-start gap-2 text-sm text-slate-700">
-            <input
-              type="radio"
-              name="viewMode"
-              className="mt-1"
-              checked={viewMode === 'official'}
-              onChange={() => {
-                setViewMode('official')
-                clearResults()
-              }}
-            />
-            <span>
-              <span className="font-medium">Official payroll</span>
-              <span className="mt-0.5 block text-slate-500">
-                View your finalized pay slip for an official pay period.
-              </span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2 text-sm text-slate-700">
-            <input
-              type="radio"
-              name="viewMode"
-              className="mt-1"
-              checked={viewMode === 'estimated'}
-              onChange={() => {
-                setViewMode('estimated')
-                clearResults()
-              }}
-            />
-            <span>
-              <span className="font-medium">Estimated payroll</span>
-              <span className="mt-0.5 block text-slate-500">
-                Estimate earnings for a custom date range using your hourly rate(s).
-              </span>
-            </span>
-          </label>
-        </fieldset>
+      <div className="card mt-6 max-w-lg space-y-5 sm:mt-8">
+        <RadioCardGroup
+          name="viewMode"
+          legend="View"
+          value={viewMode}
+          onChange={(value) => {
+            setViewMode(value as EarningsViewMode)
+            clearResults()
+          }}
+          options={[
+            {
+              value: 'official',
+              label: 'Official payroll',
+              description: 'View your finalized pay slip for an official pay period.',
+            },
+            {
+              value: 'estimated',
+              label: 'Estimated payroll',
+              description: 'Estimate earnings for a custom date range using your hourly rate(s).',
+            },
+          ]}
+        />
 
         {viewMode === 'official' ? (
           <div>
@@ -319,11 +303,7 @@ export function MockPaycheckPage() {
           {busy ? 'Loading…' : viewMode === 'official' ? 'View official payroll' : 'Preview estimate'}
         </button>
 
-        {error && (
-          <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-            {error}
-          </div>
-        )}
+        {error && <AlertBanner variant="error">{error}</AlertBanner>}
       </div>
 
       {viewMode === 'official' && officialPeriod && officialSlip && (

@@ -5,7 +5,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { PaySlip } from '../../lib/types'
 import { autoCloseStalePunches } from '../../lib/timeEntries'
-import { formatCurrency } from '../../lib/utils'
+import { formatCurrency, formatDisplayDate } from '../../lib/utils'
+import { PageHeader, StatCard } from '../../components/ui'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
 export function EmployeeDashboard() {
@@ -50,47 +51,58 @@ export function EmployeeDashboard() {
 
   return (
     <div>
-      <h1 className="page-title">Welcome, {profile?.displayName}</h1>
-      <p className="page-subtitle">Your payroll dashboard at a glance.</p>
+      <PageHeader
+        title={`Welcome, ${profile?.displayName}`}
+        subtitle="Your payroll dashboard at a glance."
+      />
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <div className="card">
-          <p className="text-sm text-slate-500">YTD Gross Pay</p>
-          <p className="mt-1 text-2xl font-bold text-brand-700">{formatCurrency(ytdGross)}</p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-slate-500">Hourly Rate</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">
-            {formatCurrency(profile?.currentHourlyRate ?? 0)}/hr
-          </p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-slate-500">Pending Time Entries</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{pendingCount}</p>
-        </div>
+      <div className="mt-6 grid gap-4 sm:mt-8 sm:grid-cols-3">
+        <StatCard label="YTD Gross Pay" value={formatCurrency(ytdGross)} accent="brand" />
+        <StatCard
+          label="Hourly Rate"
+          value={`${formatCurrency(profile?.currentHourlyRate ?? 0)}/hr`}
+        />
+        <StatCard
+          label="Pending Time Entries"
+          value={pendingCount}
+          accent={pendingCount > 0 ? 'warning' : 'default'}
+        />
       </div>
 
-      <div className="mt-8 flex flex-wrap gap-3">
-        <Link to="/employee/timesheet" className="btn-primary">Go to Timesheet</Link>
-        <Link to="/employee/mock-paycheck" className="btn-secondary">Preview Earnings</Link>
-        <Link to="/employee/pay-slips" className="btn-secondary">View Pay Slips</Link>
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:flex sm:flex-wrap">
+        <Link to="/employee/timesheet" className="btn-primary col-span-2 sm:col-span-1">
+          Go to Timesheet
+        </Link>
+        <Link to="/employee/mock-paycheck" className="btn-secondary">
+          Preview Earnings
+        </Link>
+        <Link to="/employee/pay-slips" className="btn-secondary">
+          View Pay Slips
+        </Link>
       </div>
 
       {recentSlips.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold text-slate-900">Recent Pay Slips</h2>
-          <ul className="mt-4 space-y-2">
+        <section className="mt-8 sm:mt-10">
+          <h2 className="section-title">Recent Pay Slips</h2>
+          <ul className="mt-4 stack-cards">
             {recentSlips.map((s) => (
               <li key={s.id}>
                 <Link
                   to={`/employee/pay-slips/${s.id}`}
-                  className="card flex items-center justify-between py-3 hover:border-brand-300"
+                  className="card-interactive flex items-center justify-between gap-3 py-4"
                 >
-                  <span className="font-medium">{s.paySlipNumber}</span>
-                  <span className="text-sm text-slate-600">
-                    {s.payPeriodStart} – {s.payPeriodEnd}
-                  </span>
-                  <span className="font-semibold text-brand-700">{formatCurrency(s.grossPay)}</span>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900">{s.paySlipNumber}</p>
+                    <p className="mt-0.5 text-sm text-slate-600">
+                      {formatDisplayDate(s.payPeriodStart)} – {formatDisplayDate(s.payPeriodEnd)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="font-semibold text-brand-700">{formatCurrency(s.grossPay)}</span>
+                    <svg aria-hidden="true" viewBox="0 0 20 20" className="h-5 w-5 text-slate-400" fill="currentColor">
+                      <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L10.94 10 7.23 6.29a.75.75 0 111.06-1.06l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
                 </Link>
               </li>
             ))}

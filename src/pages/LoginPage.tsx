@@ -26,8 +26,8 @@ export function LoginPage() {
 
   if (user && !profile) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-        <div className="card w-full max-w-md space-y-4">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-8">
+        <div className="card w-full max-w-md space-y-4 border border-slate-200 shadow-md">
           <h1 className="text-xl font-bold text-slate-900">Account setup incomplete</h1>
           <AlertBanner variant="error">
             You signed in successfully, but your Firestore user profile is missing. An admin must
@@ -62,19 +62,19 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-8">
       <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
+        <div className="card mb-6 border border-slate-200 bg-white px-6 py-8 text-center shadow-md">
           <Link to="/" className="text-xl font-bold text-brand-800">
             {appTitle}
           </Link>
           <h1 className="mt-4 text-2xl font-bold text-slate-900">Sign in</h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-slate-600">
             Use the credentials provided by your employer.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="card space-y-4" noValidate>
+        <form onSubmit={handleSubmit} className="card space-y-5 border border-slate-200 shadow-md" noValidate>
           {error && <AlertBanner variant="error">{error}</AlertBanner>}
           <div>
             <label htmlFor="email" className="label-field">
@@ -110,10 +110,10 @@ export function LoginPage() {
         </form>
 
         {usingEmulators && (
-          <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-center text-sm text-amber-900">
+          <AlertBanner variant="warning" className="mt-4">
             Local emulator mode — run <code className="rounded bg-white px-1">npm run seed:emulator</code>{' '}
             then sign in with <strong>admin@local.test</strong> / <strong>password123</strong>
-          </p>
+          </AlertBanner>
         )}
 
         <p className="mt-6 text-center text-sm text-slate-500">

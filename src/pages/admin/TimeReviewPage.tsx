@@ -21,6 +21,8 @@ import {
 import { formatDisplayDate, formatTime } from '../../lib/utils'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
+import { AlertBanner } from '../../components/AlertBanner'
+import { EmptyState, PageHeader, SegmentedControl } from '../../components/ui'
 
 export function TimeReviewPage() {
   const { user } = useAuth()
@@ -121,40 +123,35 @@ export function TimeReviewPage() {
 
   return (
     <div>
-      <h1 className="page-title">Time Review</h1>
-      <p className="page-subtitle">Approve or reject employee time entries.</p>
+      <PageHeader
+        title="Time Review"
+        subtitle="Approve or reject employee time entries."
+        actions={
+          filter === 'submitted' && entries.length > 0 ? (
+            <button type="button" onClick={handleBulkApprove} disabled={busy} className="btn-secondary">
+              Approve all submitted
+            </button>
+          ) : undefined
+        }
+      />
 
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setFilter('submitted')}
-          className={filter === 'submitted' ? 'btn-primary' : 'btn-secondary'}
-        >
-          Submitted
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilter('all')}
-          className={filter === 'all' ? 'btn-primary' : 'btn-secondary'}
-        >
-          All Entries
-        </button>
-        {filter === 'submitted' && entries.length > 0 && (
-          <button type="button" onClick={handleBulkApprove} disabled={busy} className="btn-secondary">
-            Approve all submitted
-          </button>
-        )}
+      <div className="mt-6">
+        <SegmentedControl
+          ariaLabel="Filter time entries"
+          value={filter}
+          onChange={(value) => setFilter(value as 'submitted' | 'all')}
+          options={[
+            { value: 'submitted', label: 'Submitted' },
+            { value: 'all', label: 'All Entries' },
+          ]}
+        />
       </div>
 
-      {error && (
-        <div role="alert" className="mt-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-          {error}
-        </div>
-      )}
+      {error && <AlertBanner variant="error" className="mt-6">{error}</AlertBanner>}
 
-      <div className="mt-8 space-y-4">
+      <div className="mt-6 space-y-4 sm:mt-8">
         {entries.length === 0 ? (
-          <p className="text-slate-600">No entries to review.</p>
+          <EmptyState title="No entries to review" />
         ) : (
           entries.map((e) => {
             const punches = getPunches(e)
@@ -193,24 +190,24 @@ export function TimeReviewPage() {
                 )}
 
                 {e.status === 'submitted' && (
-                  <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-4">
+                  <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
                     <button
                       type="button"
                       onClick={() => handleApprove(e.id)}
                       disabled={busy}
-                      className="btn-primary text-xs"
+                      className="btn-primary w-full sm:w-auto"
                     >
                       Approve
                     </button>
-                    <div className="min-w-[12rem] flex-1">
-                      <label htmlFor={`reject-${e.id}`} className="sr-only">
-                        Rejection reason for {e.employeeName}
+                    <div>
+                      <label htmlFor={`reject-${e.id}`} className="label-field">
+                        Rejection reason
                       </label>
                       <input
                         id={`reject-${e.id}`}
                         type="text"
-                        placeholder="Rejection reason (required)"
-                        className="input-field text-xs"
+                        placeholder="Required to reject"
+                        className="input-field"
                         value={rejectReason}
                         onChange={(ev) =>
                           setRejectReasons((current) => ({ ...current, [e.id]: ev.target.value }))
@@ -221,7 +218,7 @@ export function TimeReviewPage() {
                       type="button"
                       onClick={() => handleReject(e.id)}
                       disabled={busy || !rejectReason.trim()}
-                      className="btn-danger text-xs"
+                      className="btn-danger w-full sm:w-auto"
                     >
                       Reject
                     </button>

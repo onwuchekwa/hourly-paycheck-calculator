@@ -19,6 +19,7 @@ import { db } from '../../lib/firebase'
 import type {
   CompanySettings,
   PayPeriod,
+  PayrollLineItem,
   PayrollRun,
   PayrollRunScope,
   PayrollRunType,
@@ -39,6 +40,7 @@ import { AlertBanner } from '../../components/AlertBanner'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
+import { PageHeader, ResponsiveTable, type ResponsiveTableColumn } from '../../components/ui'
 
 interface EmployeeOption {
   uid: string
@@ -325,10 +327,39 @@ export function PayrollRunsPage() {
   const openPeriods = periods.filter((p) => p.status === 'open')
   const displayRun = preview ?? runs.find((r) => r.status === 'preview') ?? null
 
+  const previewColumns: ResponsiveTableColumn<PayrollLineItem>[] = [
+    {
+      key: 'employee',
+      header: 'Employee',
+      render: (e) => e.employeeName,
+    },
+    {
+      key: 'hours',
+      header: 'Hours',
+      align: 'right',
+      render: (e) => formatDecimalHours(e.totalHours),
+    },
+    {
+      key: 'rate',
+      header: 'Rate',
+      align: 'right',
+      render: (e) => `${formatCurrency(e.hourlyRate)}/hr`,
+    },
+    {
+      key: 'gross',
+      header: 'Gross',
+      align: 'right',
+      className: 'font-medium',
+      render: (e) => formatCurrency(e.grossPay),
+    },
+  ]
+
   return (
     <div>
-      <h1 className="page-title">Payroll Runs</h1>
-      <p className="page-subtitle">Preview and finalize payroll for a pay period.</p>
+      <PageHeader
+        title="Payroll Runs"
+        subtitle="Preview and finalize payroll for a pay period."
+      />
 
       <div className="card mt-6 max-w-lg space-y-5">
         <div>
@@ -492,34 +523,25 @@ export function PayrollRunsPage() {
               </div>
             )}
           </div>
-          <table className="mt-4 w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-slate-500">
-                <th className="pb-2">Employee</th>
-                <th className="pb-2 text-right">Hours</th>
-                <th className="pb-2 text-right">Rate</th>
-                <th className="pb-2 text-right">Gross</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayRun.entries.map((e) => (
-                <tr key={e.employeeId} className="border-b border-slate-100">
-                  <td className="py-2">{e.employeeName}</td>
-                  <td className="py-2 text-right">{formatDecimalHours(e.totalHours)}</td>
-                  <td className="py-2 text-right">{formatCurrency(e.hourlyRate)}/hr</td>
-                  <td className="py-2 text-right">{formatCurrency(e.grossPay)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
+          <div className="mt-4">
+            <ResponsiveTable
+            columns={previewColumns}
+            rows={displayRun.entries}
+            keyField="employeeId"
+            footer={
               <tr>
                 <td className="pt-3 font-semibold">Total</td>
-                <td className="pt-3 text-right font-semibold">{formatDecimalHours(displayRun.totalHours)}</td>
+                <td className="pt-3 text-right font-semibold">
+                  {formatDecimalHours(displayRun.totalHours)}
+                </td>
                 <td className="pt-3" />
-                <td className="pt-3 text-right font-bold text-brand-700">{formatCurrency(displayRun.totalGross)}</td>
+                <td className="pt-3 text-right font-bold text-brand-700">
+                  {formatCurrency(displayRun.totalGross)}
+                </td>
               </tr>
-            </tfoot>
-          </table>
+            }
+          />
+          </div>
           {displayRun.entries.some((e) => e.grossPay === 0 && e.totalHours > 0) && (
             <p className="mt-3 text-sm text-amber-800">
               Some employees show $0.00 gross because no hourly rate is on file. Set their rate on the Employees page.

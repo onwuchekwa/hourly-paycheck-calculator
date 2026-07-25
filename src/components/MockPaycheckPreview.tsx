@@ -1,7 +1,9 @@
-import type { MockPaycheckPreview } from '../lib/types'
+import type { MockPaycheckPreview, MockPaycheckDayLine } from '../lib/types'
 import { isDateInPaidPeriod } from '../lib/payroll'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
+import { AlertBanner } from './AlertBanner'
 import { StatusBadge } from './StatusBadge'
+import { ResponsiveTable, type ResponsiveTableColumn } from './ui/ResponsiveTable'
 
 interface MockPaycheckPreviewProps {
   preview: MockPaycheckPreview
@@ -11,22 +13,67 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
   const missingRate = preview.dayBreakdown.some((line) => line.rate <= 0)
   const paidPeriods = preview.includedPaidPeriods ?? []
 
+  const columns: ResponsiveTableColumn<MockPaycheckDayLine>[] = [
+    {
+      key: 'date',
+      header: 'Date',
+      render: (line) => {
+        const inPaidPeriod =
+          paidPeriods.length > 0 && isDateInPaidPeriod(line.workDate, paidPeriods)
+        return (
+          <span>
+            {formatDisplayDate(line.workDate)}
+            {inPaidPeriod && (
+              <span className="ml-2 inline-flex rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800">
+                Paid period
+              </span>
+            )}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'hours',
+      header: 'Hours',
+      align: 'right',
+      render: (line) => formatDecimalHours(line.hours),
+    },
+    {
+      key: 'rate',
+      header: 'Rate',
+      align: 'right',
+      render: (line) => formatCurrency(line.rate),
+    },
+    {
+      key: 'amount',
+      header: 'Amount',
+      align: 'right',
+      render: (line) => formatCurrency(line.amount),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      align: 'right',
+      render: (line) => <StatusBadge status={line.status} />,
+    },
+  ]
+
   return (
     <div className="card max-w-2xl">
-      <div className="border-b border-slate-200 pb-4 mb-4">
+      <div className="mb-4 border-b border-slate-200 pb-4">
         <h2 className="text-xl font-bold text-slate-900">Estimated Payroll</h2>
         <p className="mt-1 text-sm text-slate-600">
           {formatDisplayDate(preview.payPeriodStart)} – {formatDisplayDate(preview.payPeriodEnd)}
         </p>
       </div>
 
-      <div role="status" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <AlertBanner variant="warning" className="mb-4">
         Estimate only. Only approved time is included in actual payroll. Draft, submitted, or rejected
         hours may change or be excluded.
-      </div>
+      </AlertBanner>
 
       {paidPeriods.length > 0 && (
-        <div role="status" className="mb-4 rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-900">
+        <AlertBanner variant="info" className="mb-4">
           <p className="font-medium">Includes already-paid pay period(s)</p>
           <p className="mt-1">
             Your date range overlaps official payroll for{' '}
@@ -38,17 +85,17 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
               .join('; ')}
             . Days in those periods may already appear on a finalized pay slip.
           </p>
-        </div>
+        </AlertBanner>
       )}
 
       {missingRate && (
-        <div role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+        <AlertBanner variant="error" className="mb-4">
           Your hourly rate could not be determined for some dates. Contact your employer if amounts
           show $0.00.
-        </div>
+        </AlertBanner>
       )}
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-6">
+      <dl className="mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <div>
           <dt className="text-slate-500">Employee</dt>
           <dd className="font-medium">{preview.employeeName}</dd>
@@ -67,42 +114,11 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
         </div>
       </dl>
 
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-200 text-left text-slate-500">
-            <th className="pb-2 font-medium">Date</th>
-            <th className="pb-2 font-medium text-right">Hours</th>
-            <th className="pb-2 font-medium text-right">Rate</th>
-            <th className="pb-2 font-medium text-right">Amount</th>
-            <th className="pb-2 font-medium text-right">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {preview.dayBreakdown.map((line) => {
-            const inPaidPeriod =
-              paidPeriods.length > 0 && isDateInPaidPeriod(line.workDate, paidPeriods)
-
-            return (
-            <tr key={line.workDate} className="border-b border-slate-100">
-              <td className="py-2">
-                <span>{formatDisplayDate(line.workDate)}</span>
-                {inPaidPeriod && (
-                  <span className="ml-2 inline-flex rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800">
-                    Paid period
-                  </span>
-                )}
-              </td>
-              <td className="py-2 text-right">{formatDecimalHours(line.hours)}</td>
-              <td className="py-2 text-right">{formatCurrency(line.rate)}</td>
-              <td className="py-2 text-right">{formatCurrency(line.amount)}</td>
-              <td className="py-2 text-right">
-                <StatusBadge status={line.status} />
-              </td>
-            </tr>
-            )
-          })}
-        </tbody>
-        <tfoot>
+      <ResponsiveTable
+        columns={columns}
+        rows={preview.dayBreakdown}
+        keyField="workDate"
+        footer={
           <tr>
             <td colSpan={3} className="pt-4 text-right font-semibold">
               Estimated Gross Pay
@@ -112,8 +128,8 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
             </td>
             <td />
           </tr>
-        </tfoot>
-      </table>
+        }
+      />
     </div>
   )
 }

@@ -17,31 +17,34 @@ export function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50 to-white">
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
-        <span className="text-xl font-bold text-brand-800">{appTitle}</span>
-        <Link to="/login" className="btn-primary">
+      <header className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6 sm:py-6">
+        <span className="truncate text-lg font-bold text-brand-800 sm:text-xl">{appTitle}</span>
+        <Link to="/login" className="btn-primary shrink-0">
           Sign in
         </Link>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 pb-20 pt-12">
+      <main className="mx-auto max-w-5xl px-4 pb-16 pt-8 sm:px-6 sm:pb-20 sm:pt-12">
         <div className="max-w-2xl">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-5xl">
             Hourly payroll, simplified.
           </h1>
-          <p className="mt-6 text-lg leading-relaxed text-slate-600">
+          <p className="mt-4 text-base leading-relaxed text-slate-600 sm:mt-6 sm:text-lg">
             Track time, review entries, and run payroll with clear pay slips for every employee.
             Sign in with the username and password provided by your employer.
           </p>
-          <div className="mt-10 flex flex-wrap gap-4">
-            <Link to="/login" className="btn-primary px-6 py-3 text-base">
+          <div className="mt-8 sm:mt-10">
+            <Link to="/login" className="btn-primary w-full sm:w-auto">
               Sign in to your account
             </Link>
           </div>
         </div>
 
-        <section className="mt-12 rounded-xl border border-brand-100 bg-brand-50 p-6" aria-label="How it works">
-          <h2 className="text-lg font-semibold text-slate-900">How it works</h2>
+        <section
+          className="mt-10 rounded-xl border border-brand-100 bg-brand-50 p-4 sm:mt-12 sm:p-6"
+          aria-label="How it works"
+        >
+          <h2 className="section-title">How it works</h2>
           <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-slate-700">
             <li>Your employer creates your account and sends sign-in instructions by email.</li>
             <li>Clock in and out each workday, then submit your timesheet for approval.</li>
@@ -49,7 +52,7 @@ export function HomePage() {
           </ol>
         </section>
 
-        <section className="mt-12 grid gap-6 sm:grid-cols-3" aria-label="Features">
+        <section className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-3 sm:gap-6" aria-label="Features">
           {[
             {
               title: 'Clock in & out',
@@ -72,7 +75,7 @@ export function HomePage() {
         </section>
       </main>
 
-      <footer className="border-t border-slate-200 py-8 text-center text-sm text-slate-500">
+      <footer className="border-t border-slate-200 px-4 py-6 text-center text-sm text-slate-500 sm:py-8">
         {appTitle} — Employer-managed payroll for hourly teams
       </footer>
     </div>

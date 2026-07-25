@@ -4,21 +4,33 @@
   --color-brand-50: #eff6ff;
   --color-brand-100: #dbeafe;
   --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
   --color-brand-500: #3b82f6;
   --color-brand-600: #2563eb;
   --color-brand-700: #1d4ed8;
   --color-brand-800: #1e40af;
   --color-brand-900: #1e3a8a;
-  --font-sans: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --color-brand-950: #172554;
+
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-border: #e2e8f0;
+
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 @layer base {
   html {
-    @apply antialiased;
+    @apply antialiased scroll-smooth;
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 font-sans min-h-screen;
+    @apply bg-surface-muted text-text-primary font-sans min-h-screen text-base sm:text-sm;
   }
 
   :focus-visible {
@@ -28,35 +40,63 @@
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-600 px-4 py-2.5 text-base font-semibold text-white shadow-sm transition hover:bg-brand-700 active:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:text-sm;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-base font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 active:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:text-sm;
   }
 
   .btn-danger {
-    @apply inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center rounded-lg bg-red-600 px-4 py-2.5 text-base font-semibold text-white shadow-sm transition hover:bg-red-700 active:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:text-sm;
   }
 
   .input-field {
-    @apply block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500;
+    @apply block w-full min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:min-h-0 sm:text-sm;
   }
 
   .label-field {
-    @apply block text-sm font-medium text-slate-700 mb-1;
+    @apply mb-1.5 block text-sm font-medium text-slate-700;
   }
 
   .card {
-    @apply rounded-xl border border-slate-200 bg-white p-6 shadow-sm;
+    @apply rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6;
+  }
+
+  .card-interactive {
+    @apply rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm transition hover:border-brand-300 hover:shadow-md sm:p-6;
   }
 
   .page-title {
-    @apply text-2xl font-bold text-slate-900 tracking-tight;
+    @apply text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl;
   }
 
   .page-subtitle {
-    @apply mt-1 text-sm text-slate-600;
+    @apply mt-1 text-sm leading-relaxed text-slate-600;
+  }
+
+  .section-title {
+    @apply text-base font-semibold text-slate-900 sm:text-lg;
+  }
+
+  .text-muted {
+    @apply text-sm text-slate-500;
+  }
+
+  .table-wrap {
+    @apply -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0;
+  }
+
+  .stack-cards {
+    @apply flex flex-col gap-3;
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded-lg bg-slate-200;
   }
 }
 

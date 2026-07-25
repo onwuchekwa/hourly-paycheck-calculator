@@ -4,12 +4,13 @@ import type {
   PaySlipDayLine,
   PayrollLineItem,
   PayrollRun,
+  PayPeriod,
   TimeEntry,
   EmployeeRate,
 } from './types'
 import { calcEntryHours, hasCompletedPunch, normalizeEntry } from './timeEntries'
 import { formatDate } from './utils'
-import { getRateForDate } from './rates'
+import { getMockPaycheckRate, getRateForDate } from './rates'
 
 export function buildPayrollForEmployee(
   employeeId: string,
@@ -66,18 +67,18 @@ export function buildPayrollSnapshot(
 export function buildMockPaycheckForEmployee(
   employeeId: string,
   employeeName: string,
-  payPeriodId: string,
-  payPeriodStart: string,
-  payPeriodEnd: string,
+  rangeStart: string,
+  rangeEnd: string,
   entries: TimeEntry[],
   rates: EmployeeRate[],
+  periods: PayPeriod[],
   fallbackRate = 0,
 ): MockPaycheckPreview | null {
   const completed = entries.filter(
     (e) =>
       e.employeeId === employeeId &&
-      e.workDate >= payPeriodStart &&
-      e.workDate <= payPeriodEnd &&
+      e.workDate >= rangeStart &&
+      e.workDate <= rangeEnd &&
       hasCompletedPunch(normalizeEntry(e)),
   )
   if (completed.length === 0) return null
@@ -85,7 +86,7 @@ export function buildMockPaycheckForEmployee(
   const dayBreakdown: MockPaycheckDayLine[] = completed.map((e) => {
     const normalized = normalizeEntry(e)
     const hours = calcEntryHours(normalized)
-    const rate = getRateForDate(rates, e.workDate, fallbackRate)
+    const rate = getMockPaycheckRate(rates, e.workDate, periods, fallbackRate)
     return {
       workDate: e.workDate,
       hours,
@@ -100,12 +101,12 @@ export function buildMockPaycheckForEmployee(
   const avgRate =
     totalHours > 0
       ? grossPay / totalHours
-      : getRateForDate(rates, payPeriodEnd, fallbackRate)
+      : getMockPaycheckRate(rates, rangeEnd, periods, fallbackRate)
 
   return {
-    payPeriodId,
-    payPeriodStart,
-    payPeriodEnd,
+    payPeriodId: '',
+    payPeriodStart: rangeStart,
+    payPeriodEnd: rangeEnd,
     employeeId,
     employeeName,
     totalHours: Math.round(totalHours * 100) / 100,

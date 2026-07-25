@@ -1,21 +1,31 @@
 import { useEffect, useState } from 'react'
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
-import type { MockPaycheckPreview, PayPeriod, PaySlip, TimeEntry } from '../../lib/types'
+import type { MockPaycheckPreview, PayPeriod, PaySlip, TimeEntry, UserProfile } from '../../lib/types'
 import { buildMockPaycheckForEmployee } from '../../lib/payroll'
 import { getEmployeeRates } from '../../lib/rates'
+import { formatDate, todayString } from '../../lib/utils'
+import { DatePicker } from '../../components/DatePicker'
 import { MockPaycheckPreviewCard } from '../../components/MockPaycheckPreview'
 import { OfficialPayrollPreview } from '../../components/OfficialPayrollPreview'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
 type EarningsViewMode = 'official' | 'estimated'
 
+function defaultStartDate(): string {
+  const now = new Date()
+  return formatDate(new Date(now.getFullYear(), now.getMonth(), 1))
+}
+
 export function MockPaycheckPage() {
   const { profile } = useAuth()
   const [periods, setPeriods] = useState<PayPeriod[]>([])
   const [selectedPeriodId, setSelectedPeriodId] = useState('')
+  const [periodPresetId, setPeriodPresetId] = useState('')
   const [viewMode, setViewMode] = useState<EarningsViewMode>('estimated')
+  const [startDate, setStartDate] = useState(defaultStartDate())
+  const [endDate, setEndDate] = useState(todayString())
   const [preview, setPreview] = useState<MockPaycheckPreview | null>(null)
   const [officialSlips, setOfficialSlips] = useState<PaySlip[]>([])
   const [officialPeriod, setOfficialPeriod] = useState<PayPeriod | null>(null)
@@ -34,6 +44,11 @@ export function MockPaycheckPage() {
 
       const openPeriod = list.find((p) => p.status === 'open')
       setSelectedPeriodId(openPeriod?.id ?? list[0]?.id ?? '')
+      if (openPeriod) {
+        setPeriodPresetId(openPeriod.id)
+        setStartDate(openPeriod.startDate)
+        setEndDate(openPeriod.endDate)
+      }
 
       setLoading(false)
     }
@@ -48,14 +63,27 @@ export function MockPaycheckPage() {
     setError('')
   }
 
+  const applyPeriodPreset = (periodId: string) => {
+    setPeriodPresetId(periodId)
+    if (!periodId) return
+    const period = periods.find((p) => p.id === periodId)
+    if (!period) return
+    setStartDate(period.startDate)
+    setEndDate(period.endDate)
+    clearResults()
+  }
+
+  const resolveFallbackRate = async (uid: string): Promise<number> => {
+    if (profile?.currentHourlyRate && profile.currentHourlyRate > 0) {
+      return profile.currentHourlyRate
+    }
+    const userSnap = await getDoc(doc(db, 'users', uid))
+    if (!userSnap.exists()) return 0
+    return (userSnap.data() as UserProfile).currentHourlyRate ?? 0
+  }
+
   const handlePreview = async () => {
     if (!profile) return
-
-    const period = periods.find((p) => p.id === selectedPeriodId)
-    if (!period) {
-      setError('Select a pay period.')
-      return
-    }
 
     setBusy(true)
     setError('')
@@ -66,6 +94,12 @@ export function MockPaycheckPage() {
 
     try {
       if (viewMode === 'official') {
+        const period = periods.find((p) => p.id === selectedPeriodId)
+        if (!period) {
+          setError('Select a pay period.')
+          return
+        }
+
         const slipsSnap = await getDocs(
           query(
             collection(db, 'paySlips'),
@@ -87,6 +121,15 @@ export function MockPaycheckPage() {
         return
       }
 
+      if (!startDate || !endDate) {
+        setError('Start and end dates are required.')
+        return
+      }
+      if (startDate > endDate) {
+        setError('Start date must be on or before end date.')
+        return
+      }
+
       const entriesSnap = await getDocs(
         query(
           collection(db, 'timeEntries'),
@@ -96,24 +139,26 @@ export function MockPaycheckPage() {
       )
       const entries = entriesSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }) as TimeEntry)
-        .filter(
-          (e) => e.workDate >= period.startDate && e.workDate <= period.endDate,
-        )
-      const rates = await getEmployeeRates(profile.uid)
+        .filter((e) => e.workDate >= startDate && e.workDate <= endDate)
+
+      const [rates, fallbackRate] = await Promise.all([
+        getEmployeeRates(profile.uid),
+        resolveFallbackRate(profile.uid),
+      ])
 
       const result = buildMockPaycheckForEmployee(
         profile.uid,
         profile.displayName,
-        period.id,
-        period.startDate,
-        period.endDate,
+        startDate,
+        endDate,
         entries,
         rates,
-        profile.currentHourlyRate,
+        periods,
+        fallbackRate,
       )
 
       if (!result) {
-        setError('No completed time entries found for this pay period.')
+        setError('No completed time entries found for this date range.')
         return
       }
 
@@ -133,7 +178,7 @@ export function MockPaycheckPage() {
     <div>
       <h1 className="page-title">Earnings Preview</h1>
       <p className="page-subtitle">
-        View official pay or estimate earnings for an official pay period.
+        View official pay for a pay period or estimate earnings for a custom date range.
       </p>
 
       <div className="card mt-8 max-w-lg space-y-5">
@@ -153,7 +198,7 @@ export function MockPaycheckPage() {
             <span>
               <span className="font-medium">Official payroll</span>
               <span className="mt-0.5 block text-slate-500">
-                View finalized pay slips for this pay period.
+                View finalized pay slips for an official pay period.
               </span>
             </span>
           </label>
@@ -171,39 +216,92 @@ export function MockPaycheckPage() {
             <span>
               <span className="font-medium">Estimated payroll</span>
               <span className="mt-0.5 block text-slate-500">
-                Estimate earnings using your hourly rate(s) for this pay period.
+                Estimate earnings for a custom date range using your hourly rate(s).
               </span>
             </span>
           </label>
         </fieldset>
 
-        <div>
-          <label htmlFor="pay-period" className="label-field">Pay period</label>
-          <select
-            id="pay-period"
-            className="input-field"
-            value={selectedPeriodId}
-            onChange={(e) => {
-              setSelectedPeriodId(e.target.value)
-              clearResults()
-            }}
-          >
-            {periods.length === 0 ? (
-              <option value="">No pay periods available</option>
-            ) : (
-              periods.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.startDate} – {p.endDate} ({p.status})
-                </option>
-              ))
+        {viewMode === 'official' ? (
+          <div>
+            <label htmlFor="pay-period" className="label-field">Pay period</label>
+            <select
+              id="pay-period"
+              className="input-field"
+              value={selectedPeriodId}
+              onChange={(e) => {
+                setSelectedPeriodId(e.target.value)
+                clearResults()
+              }}
+            >
+              {periods.length === 0 ? (
+                <option value="">No pay periods available</option>
+              ) : (
+                periods.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.startDate} – {p.endDate} ({p.status})
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <DatePicker
+                label="Start date"
+                value={startDate}
+                max={endDate || todayString()}
+                onChange={(value) => {
+                  setStartDate(value)
+                  setPeriodPresetId('')
+                  clearResults()
+                }}
+                required
+              />
+              <DatePicker
+                label="End date"
+                value={endDate}
+                min={startDate}
+                onChange={(value) => {
+                  setEndDate(value)
+                  setPeriodPresetId('')
+                  clearResults()
+                }}
+                required
+              />
+            </div>
+
+            {periods.length > 0 && (
+              <div>
+                <label htmlFor="period-preset" className="label-field">
+                  Fill dates from pay period (optional)
+                </label>
+                <select
+                  id="period-preset"
+                  className="input-field"
+                  value={periodPresetId}
+                  onChange={(e) => applyPeriodPreset(e.target.value)}
+                >
+                  <option value="">Custom date range</option>
+                  {periods.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.startDate} – {p.endDate} ({p.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
-          </select>
-        </div>
+          </>
+        )}
 
         <button
           type="button"
           onClick={handlePreview}
-          disabled={busy || !selectedPeriodId}
+          disabled={
+            busy ||
+            (viewMode === 'official' ? !selectedPeriodId : !startDate || !endDate)
+          }
           className="btn-primary"
         >
           {busy ? 'Loading…' : viewMode === 'official' ? 'View official payroll' : 'Preview estimate'}
@@ -232,7 +330,7 @@ export function MockPaycheckPage() {
         <p className="mt-8 text-sm text-slate-600">
           {viewMode === 'official'
             ? 'No official pay slip is available for this pay period.'
-            : 'No earnings to estimate for this pay period.'}
+            : 'No earnings to show for this date range.'}
         </p>
       )}
     </div>

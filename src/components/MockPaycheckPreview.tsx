@@ -7,6 +7,8 @@ interface MockPaycheckPreviewProps {
 }
 
 export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
+  const missingRate = preview.dayBreakdown.some((line) => line.rate <= 0)
+
   return (
     <div className="card max-w-2xl">
       <div className="border-b border-slate-200 pb-4 mb-4">
@@ -17,10 +19,16 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
       </div>
 
       <div role="status" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Estimate only for this pay period. Hourly rates reflect your effective rate on each work date.
-        Only approved time is included in actual payroll; draft, submitted, or rejected hours may change
-        or be excluded.
+        Estimate only. Only approved time is included in actual payroll. Draft, submitted, or rejected
+        hours may change or be excluded.
       </div>
+
+      {missingRate && (
+        <div role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+          Your hourly rate could not be determined for some dates. Contact your employer if amounts
+          show $0.00.
+        </div>
+      )}
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-6">
         <div>
@@ -28,7 +36,7 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
           <dd className="font-medium">{preview.employeeName}</dd>
         </div>
         <div>
-          <dt className="text-slate-500">Hourly Rate</dt>
+          <dt className="text-slate-500">Avg. Rate</dt>
           <dd className="font-medium">{formatCurrency(preview.hourlyRate)}/hr</dd>
         </div>
         <div>

@@ -6,7 +6,7 @@ import {
   orderBy,
 } from 'firebase/firestore'
 import { db } from './firebase'
-import type { EmployeeRate } from './types'
+import type { EmployeeRate, PayPeriod } from './types'
 
 export async function getEmployeeRates(employeeId: string): Promise<EmployeeRate[]> {
   const q = query(
@@ -31,3 +31,26 @@ export function getRateForDate(
 
 /** @alias getRateForDate */
 export const getEffectiveHourlyRate = getRateForDate
+
+export function findPayPeriodForDate(periods: PayPeriod[], workDate: string): PayPeriod | undefined {
+  return periods.find((period) => period.startDate <= workDate && period.endDate >= workDate)
+}
+
+/** Hourly rate for mock pay estimates: work-date history, then period, then profile fallback. */
+export function getMockPaycheckRate(
+  rates: EmployeeRate[],
+  workDate: string,
+  periods: PayPeriod[],
+  fallbackRate: number,
+): number {
+  const rateOnWorkDate = getRateForDate(rates, workDate, 0)
+  if (rateOnWorkDate > 0) return rateOnWorkDate
+
+  const period = findPayPeriodForDate(periods, workDate)
+  if (period) {
+    const rateAtPeriodEnd = getRateForDate(rates, period.endDate, 0)
+    if (rateAtPeriodEnd > 0) return rateAtPeriodEnd
+  }
+
+  return fallbackRate
+}

@@ -3,7 +3,7 @@ import { collection, doc, getDoc, getDocs, query, where, orderBy } from 'firebas
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { MockPaycheckPreview, PayPeriod, PaySlip, TimeEntry, UserProfile } from '../../lib/types'
-import { buildMockPaycheckForEmployee } from '../../lib/payroll'
+import { buildMockPaycheckForEmployee, mergeEmployeePaySlips, paySlipMatchesPeriod } from '../../lib/payroll'
 import { getEmployeeRates } from '../../lib/rates'
 import { formatDate, todayString } from '../../lib/utils'
 import { DatePicker } from '../../components/DatePicker'
@@ -19,7 +19,7 @@ function defaultStartDate(): string {
 }
 
 export function MockPaycheckPage() {
-  const { profile } = useAuth()
+  const { user, profile } = useAuth()
   const [periods, setPeriods] = useState<PayPeriod[]>([])
   const [selectedPeriodId, setSelectedPeriodId] = useState('')
   const [periodPresetId, setPeriodPresetId] = useState('')
@@ -27,7 +27,8 @@ export function MockPaycheckPage() {
   const [startDate, setStartDate] = useState(defaultStartDate())
   const [endDate, setEndDate] = useState(todayString())
   const [preview, setPreview] = useState<MockPaycheckPreview | null>(null)
-  const [officialSlips, setOfficialSlips] = useState<PaySlip[]>([])
+  const [officialSlip, setOfficialSlip] = useState<PaySlip | null>(null)
+  const [officialSourceSlips, setOfficialSourceSlips] = useState<PaySlip[]>([])
   const [officialPeriod, setOfficialPeriod] = useState<PayPeriod | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -57,7 +58,8 @@ export function MockPaycheckPage() {
 
   const clearResults = () => {
     setPreview(null)
-    setOfficialSlips([])
+    setOfficialSlip(null)
+    setOfficialSourceSlips([])
     setOfficialPeriod(null)
     setHasPreviewed(false)
     setError('')
@@ -83,12 +85,15 @@ export function MockPaycheckPage() {
   }
 
   const handlePreview = async () => {
-    if (!profile) return
+    if (!profile || !user) return
+
+    const employeeId = user.uid
 
     setBusy(true)
     setError('')
     setPreview(null)
-    setOfficialSlips([])
+    setOfficialSlip(null)
+    setOfficialSourceSlips([])
     setOfficialPeriod(null)
     setHasPreviewed(true)
 
@@ -100,24 +105,45 @@ export function MockPaycheckPage() {
           return
         }
 
-        const slipsSnap = await getDocs(
+        let slipsSnap = await getDocs(
           query(
             collection(db, 'paySlips'),
-            where('employeeId', '==', profile.uid),
-            orderBy('payPeriodEnd', 'desc'),
+            where('employeeId', '==', employeeId),
+            where('payPeriodId', '==', period.id),
           ),
         )
-        const matchingSlips = slipsSnap.docs
+
+        let matchingSlips = slipsSnap.docs
           .map((d) => ({ id: d.id, ...d.data() }) as PaySlip)
-          .filter((slip) => slip.payPeriodId === period.id)
+          .filter((slip) => slip.employeeId === employeeId && paySlipMatchesPeriod(slip, period))
+
+        if (matchingSlips.length === 0) {
+          slipsSnap = await getDocs(
+            query(
+              collection(db, 'paySlips'),
+              where('employeeId', '==', employeeId),
+              orderBy('payPeriodEnd', 'desc'),
+            ),
+          )
+          matchingSlips = slipsSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }) as PaySlip)
+            .filter((slip) => slip.employeeId === employeeId && paySlipMatchesPeriod(slip, period))
+        }
 
         if (matchingSlips.length === 0) {
           setError('No official pay slip has been issued for this pay period yet.')
           return
         }
 
+        const mergedSlip = mergeEmployeePaySlips(matchingSlips)
+        if (!mergedSlip) {
+          setError('No official pay slip has been issued for this pay period yet.')
+          return
+        }
+
         setOfficialPeriod(period)
-        setOfficialSlips(matchingSlips)
+        setOfficialSourceSlips(matchingSlips)
+        setOfficialSlip(mergedSlip)
         return
       }
 
@@ -133,7 +159,7 @@ export function MockPaycheckPage() {
       const entriesSnap = await getDocs(
         query(
           collection(db, 'timeEntries'),
-          where('employeeId', '==', profile.uid),
+          where('employeeId', '==', employeeId),
           orderBy('workDate', 'desc'),
         ),
       )
@@ -172,7 +198,7 @@ export function MockPaycheckPage() {
 
   if (loading) return <LoadingSpinner />
 
-  const hasResults = viewMode === 'official' ? officialSlips.length > 0 : preview !== null
+  const hasResults = viewMode === 'official' ? officialSlip !== null : preview !== null
 
   return (
     <div>
@@ -198,7 +224,7 @@ export function MockPaycheckPage() {
             <span>
               <span className="font-medium">Official payroll</span>
               <span className="mt-0.5 block text-slate-500">
-                View finalized pay slips for an official pay period.
+                View your finalized pay slip for an official pay period.
               </span>
             </span>
           </label>
@@ -314,9 +340,13 @@ export function MockPaycheckPage() {
         )}
       </div>
 
-      {viewMode === 'official' && officialPeriod && officialSlips.length > 0 && (
+      {viewMode === 'official' && officialPeriod && officialSlip && (
         <div className="mt-8">
-          <OfficialPayrollPreview period={officialPeriod} slips={officialSlips} />
+          <OfficialPayrollPreview
+            period={officialPeriod}
+            slip={officialSlip}
+            sourceSlips={officialSourceSlips}
+          />
         </div>
       )}
 

@@ -52,6 +52,14 @@
       "collectionGroup": "paySlips",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "employeeId", "order": "ASCENDING" },
+        { "fieldPath": "payPeriodId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "paySlips",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "payrollRunId", "order": "ASCENDING" },
         { "fieldPath": "paySlipNumber", "order": "DESCENDING" }
       ]

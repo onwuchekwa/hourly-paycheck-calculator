@@ -1,6 +1,7 @@
 import type {
   MockPaycheckDayLine,
   MockPaycheckPreview,
+  PaySlip,
   PaySlipDayLine,
   PayrollLineItem,
   PayrollRun,
@@ -128,6 +129,35 @@ export function buildMockPaycheckForEmployee(
     grossPay: Math.round(grossPay * 100) / 100,
     hourlyRate: Math.round(avgRate * 100) / 100,
     dayBreakdown: dayBreakdown.sort((a, b) => a.workDate.localeCompare(b.workDate)),
+  }
+}
+
+export function paySlipMatchesPeriod(slip: PaySlip, period: PayPeriod): boolean {
+  if (slip.payPeriodId === period.id) return true
+  return slip.payPeriodStart === period.startDate && slip.payPeriodEnd === period.endDate
+}
+
+export function mergeEmployeePaySlips(slips: PaySlip[]): PaySlip | null {
+  if (slips.length === 0) return null
+
+  const sorted = [...slips].sort((a, b) => a.paySlipNumber.localeCompare(b.paySlipNumber))
+  const base = sorted[sorted.length - 1]
+  const lineItems = sorted
+    .flatMap((slip) => slip.lineItems)
+    .sort((a, b) => a.workDate.localeCompare(b.workDate))
+  const totalHours = Math.round(lineItems.reduce((sum, line) => sum + line.hours, 0) * 100) / 100
+  const grossPay = Math.round(lineItems.reduce((sum, line) => sum + line.amount, 0) * 100) / 100
+  const hourlyRate =
+    totalHours > 0
+      ? Math.round((grossPay / totalHours) * 100) / 100
+      : base.hourlyRate
+
+  return {
+    ...base,
+    lineItems,
+    totalHours,
+    grossPay,
+    hourlyRate,
   }
 }
 

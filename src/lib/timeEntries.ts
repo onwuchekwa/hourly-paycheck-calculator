@@ -52,6 +52,32 @@ export function timestampOnWorkDate(workDate: string, when: Date = new Date()): 
   return alignTimestampToWorkDate(Timestamp.fromDate(when), workDate)
 }
 
+/** Clock-in timestamp using the selected work date and the local time when the button is clicked. */
+export function createClockInTimestamp(workDate: string): Timestamp {
+  return timestampOnWorkDate(workDate, new Date())
+}
+
+/** Clock-out timestamp using the entry work date and the local time when the button is clicked. */
+export function createClockOutTimestamp(workDate: string): Timestamp {
+  return timestampOnWorkDate(workDate, new Date())
+}
+
+export function punchesToFirestoreForWorkDate(workDate: string, punches: TimePunch[]): TimePunch[] {
+  return punches.map((p) => {
+    const aligned = alignPunchToWorkDate(
+      {
+        clockIn: toTimestamp(p.clockIn) ?? p.clockIn,
+        clockOut: toTimestamp(p.clockOut),
+      },
+      workDate,
+    )
+    return {
+      clockIn: aligned.clockIn,
+      clockOut: aligned.clockOut ?? null,
+    }
+  })
+}
+
 function alignPunchToWorkDate(punch: TimePunch, workDate: string): TimePunch {
   const clockIn = toTimestamp(punch.clockIn)
   if (!clockIn) return punch
@@ -289,10 +315,17 @@ export function canEditEntry(entry: TimeEntry): boolean {
   return entry.status === 'draft' || entry.status === 'submitted'
 }
 
-export function punchToEditRow(punch: TimePunch): EditPunchRow {
+export function punchToEditRow(punch: TimePunch, workDate: string): EditPunchRow {
+  const aligned = alignPunchToWorkDate(
+    {
+      clockIn: toTimestamp(punch.clockIn) ?? punch.clockIn,
+      clockOut: toTimestamp(punch.clockOut),
+    },
+    workDate,
+  )
   return {
-    clockIn: timestampToInputValue(punch.clockIn),
-    clockOut: punch.clockOut ? timestampToInputValue(punch.clockOut) : '',
+    clockIn: timestampToInputValue(aligned.clockIn),
+    clockOut: aligned.clockOut ? timestampToInputValue(aligned.clockOut) : '',
   }
 }
 

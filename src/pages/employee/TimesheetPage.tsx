@@ -16,6 +16,8 @@ import {
   autoCloseStalePunches,
   canEditEntry,
   canSubmitEntry,
+  createClockInTimestamp,
+  createClockOutTimestamp,
   fetchEmployeeEntries,
   findGlobalOpenPunch,
   formatEntryDuration,
@@ -25,11 +27,10 @@ import {
   normalizeEntry,
   parseSinglePunchEdit,
   punchToEditRow,
-  punchesToFirestore,
+  punchesToFirestoreForWorkDate,
   removePunchAtIndex,
   replacePunchAtIndex,
   serializePunchesForHistory,
-  timestampOnWorkDate,
 } from '../../lib/timeEntries'
 import {
   formatDate,
@@ -137,9 +138,9 @@ export function TimesheetPage() {
       const current = await ensureEntry()
       const currentPunches = getPunches(current)
       await updateDoc(doc(db, 'timeEntries', docId), {
-        punches: punchesToFirestore([
+        punches: punchesToFirestoreForWorkDate(workDate, [
           ...currentPunches,
-          { clockIn: timestampOnWorkDate(workDate), clockOut: null },
+          { clockIn: createClockInTimestamp(workDate), clockOut: null },
         ]),
         clockIn: null,
         clockOut: null,
@@ -169,11 +170,11 @@ export function TimesheetPage() {
       const punches = [...getPunches(open.entry)]
       punches[open.punchIndex] = {
         ...punches[open.punchIndex],
-        clockOut: timestampOnWorkDate(open.entry.workDate),
+        clockOut: createClockOutTimestamp(open.entry.workDate),
       }
 
       await updateDoc(doc(db, 'timeEntries', open.entryId), {
-        punches: punchesToFirestore(punches),
+        punches: punchesToFirestoreForWorkDate(open.entry.workDate, punches),
         clockIn: null,
         clockOut: null,
         punchSource: 'button',
@@ -212,7 +213,7 @@ export function TimesheetPage() {
     const punch = punches[index]
     if (!punch) return
     setEditingPunchIndex(index)
-    setSessionEditRow(punchToEditRow(punch))
+    setSessionEditRow(punchToEditRow(punch, workDate))
     setEditReason('')
   }
 
@@ -253,7 +254,7 @@ export function TimesheetPage() {
         newPunches: serializePunchesForHistory(replaced.punches),
       }
       await updateDoc(doc(db, 'timeEntries', docId), {
-        punches: punchesToFirestore(replaced.punches),
+        punches: punchesToFirestoreForWorkDate(workDate, replaced.punches),
         clockIn: null,
         clockOut: null,
         punchSource: 'manual_edit',
@@ -280,7 +281,7 @@ export function TimesheetPage() {
         setEntry(null)
       } else {
         await updateDoc(doc(db, 'timeEntries', docId), {
-          punches: punchesToFirestore(remaining),
+          punches: punchesToFirestoreForWorkDate(workDate, remaining),
           clockIn: null,
           clockOut: null,
           updatedAt: serverTimestamp(),

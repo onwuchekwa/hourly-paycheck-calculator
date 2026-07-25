@@ -30,6 +30,10 @@ service cloud.firestore {
       return reason is string && reason.size() >= 10;
     }
 
+    function isOwnTimeEntryId(entryId) {
+      return entryId.matches('^' + request.auth.uid + '_.+');
+    }
+
     match /users/{userId} {
       allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
       allow create: if false;
@@ -51,7 +55,7 @@ service cloud.firestore {
     match /timeEntries/{entryId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
-        (isEmployee() && resource.data.employeeId == request.auth.uid)
+        (isEmployee() && isOwnTimeEntryId(entryId))
       );
       allow create: if isSignedIn() && (
         isAdmin() ||

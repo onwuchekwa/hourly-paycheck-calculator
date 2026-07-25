@@ -42,19 +42,25 @@ export function TimesheetPage() {
     if (!employeeId) return
     const load = async () => {
       setLoading(true)
-      const snap = await getDoc(doc(db, 'timeEntries', docId))
-      if (snap.exists()) {
-        const data = { id: snap.id, ...snap.data() } as TimeEntry
-        setEntry(data)
-        setEditIn(timestampToInputValue(data.clockIn))
-        setEditOut(timestampToInputValue(data.clockOut))
-      } else {
-        setEntry(null)
-        setEditIn('')
-        setEditOut('')
+      setError('')
+      try {
+        const snap = await getDoc(doc(db, 'timeEntries', docId))
+        if (snap.exists()) {
+          const data = { id: snap.id, ...snap.data() } as TimeEntry
+          setEntry(data)
+          setEditIn(timestampToInputValue(data.clockIn))
+          setEditOut(timestampToInputValue(data.clockOut))
+        } else {
+          setEntry(null)
+          setEditIn('')
+          setEditOut('')
+        }
+        setShowEdit(false)
+      } catch {
+        setError('Unable to load timesheet. Please try again or contact your employer.')
+      } finally {
+        setLoading(false)
       }
-      setShowEdit(false)
-      setLoading(false)
     }
     void load()
   }, [employeeId, docId, workDate])

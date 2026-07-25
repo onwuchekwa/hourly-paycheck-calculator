@@ -36,6 +36,16 @@ export function findPayPeriodForDate(periods: PayPeriod[], workDate: string): Pa
   return periods.find((period) => period.startDate <= workDate && period.endDate >= workDate)
 }
 
+/** Resolve hourly rate from history, pay period, or employee profile fallback. */
+export function resolvePayrollRate(
+  rates: EmployeeRate[],
+  workDate: string,
+  periods: PayPeriod[],
+  fallbackRate: number,
+): number {
+  return getMockPaycheckRate(rates, workDate, periods, fallbackRate)
+}
+
 /** Hourly rate for mock pay estimates: work-date history, then period, then profile fallback. */
 export function getMockPaycheckRate(
   rates: EmployeeRate[],

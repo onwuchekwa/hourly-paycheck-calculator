@@ -41,6 +41,7 @@ import { LoadingSpinner } from '../../components/LoadingSpinner'
 interface EmployeeOption {
   uid: string
   displayName: string
+  currentHourlyRate?: number
 }
 
 export function PayrollRunsPage() {
@@ -77,10 +78,14 @@ export function PayrollRunsPage() {
     )
     setEmployees(
       empSnap.docs
-        .map((d) => ({
-          uid: d.id,
-          displayName: (d.data() as UserProfile).displayName,
-        }))
+        .map((d) => {
+          const data = d.data() as UserProfile
+          return {
+            uid: d.id,
+            displayName: data.displayName,
+            currentHourlyRate: data.currentHourlyRate,
+          }
+        })
         .sort((a, b) => a.displayName.localeCompare(b.displayName)),
     )
     setLoading(false)
@@ -131,14 +136,18 @@ export function PayrollRunsPage() {
       }
 
       const ratesByEmployee = new Map<string, Awaited<ReturnType<typeof getEmployeeRates>>>()
+      const fallbackRatesByEmployee = new Map<string, number>()
       for (const emp of targetEmployees) {
         ratesByEmployee.set(emp.uid, await getEmployeeRates(emp.uid))
+        fallbackRatesByEmployee.set(emp.uid, emp.currentHourlyRate ?? 0)
       }
 
       const lines = buildPayrollSnapshot(
         targetEmployees.map((e) => ({ uid: e.uid, displayName: e.displayName })),
         entries,
         ratesByEmployee,
+        periods,
+        fallbackRatesByEmployee,
       )
 
       if (lines.length === 0) {
@@ -437,6 +446,7 @@ export function PayrollRunsPage() {
               <tr className="border-b text-left text-slate-500">
                 <th className="pb-2">Employee</th>
                 <th className="pb-2 text-right">Hours</th>
+                <th className="pb-2 text-right">Rate</th>
                 <th className="pb-2 text-right">Gross</th>
               </tr>
             </thead>
@@ -445,6 +455,7 @@ export function PayrollRunsPage() {
                 <tr key={e.employeeId} className="border-b border-slate-100">
                   <td className="py-2">{e.employeeName}</td>
                   <td className="py-2 text-right">{formatDecimalHours(e.totalHours)}</td>
+                  <td className="py-2 text-right">{formatCurrency(e.hourlyRate)}/hr</td>
                   <td className="py-2 text-right">{formatCurrency(e.grossPay)}</td>
                 </tr>
               ))}
@@ -453,10 +464,16 @@ export function PayrollRunsPage() {
               <tr>
                 <td className="pt-3 font-semibold">Total</td>
                 <td className="pt-3 text-right font-semibold">{formatDecimalHours(displayRun.totalHours)}</td>
+                <td className="pt-3" />
                 <td className="pt-3 text-right font-bold text-brand-700">{formatCurrency(displayRun.totalGross)}</td>
               </tr>
             </tfoot>
           </table>
+          {displayRun.entries.some((e) => e.grossPay === 0 && e.totalHours > 0) && (
+            <p className="mt-3 text-sm text-amber-800">
+              Some employees show $0.00 gross because no hourly rate is on file. Set their rate on the Employees page.
+            </p>
+          )}
         </div>
       )}
 

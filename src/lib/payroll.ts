@@ -10,13 +10,15 @@ import type {
 } from './types'
 import { calcEntryHours, hasCompletedPunch, normalizeEntry } from './timeEntries'
 import { formatDate } from './utils'
-import { getMockPaycheckRate, getRateForDate } from './rates'
+import { getMockPaycheckRate } from './rates'
 
 export function buildPayrollForEmployee(
   employeeId: string,
   employeeName: string,
   entries: TimeEntry[],
   rates: EmployeeRate[],
+  periods: PayPeriod[],
+  fallbackRate = 0,
 ): PayrollLineItem | null {
   const approved = entries.filter(
     (e) => e.employeeId === employeeId && e.status === 'approved' && hasCompletedPunch(normalizeEntry(e)),
@@ -26,7 +28,7 @@ export function buildPayrollForEmployee(
   const dayBreakdown: PaySlipDayLine[] = approved.map((e) => {
     const normalized = normalizeEntry(e)
     const hours = calcEntryHours(normalized)
-    const rate = getRateForDate(rates, e.workDate)
+    const rate = getMockPaycheckRate(rates, e.workDate, periods, fallbackRate)
     return {
       workDate: e.workDate,
       hours,
@@ -37,7 +39,11 @@ export function buildPayrollForEmployee(
 
   const totalHours = dayBreakdown.reduce((s, d) => s + d.hours, 0)
   const grossPay = dayBreakdown.reduce((s, d) => s + d.amount, 0)
-  const avgRate = totalHours > 0 ? grossPay / totalHours : getRateForDate(rates, formatDate(new Date()))
+  const periodEnd = periods[0]?.endDate ?? formatDate(new Date())
+  const avgRate =
+    totalHours > 0
+      ? grossPay / totalHours
+      : getMockPaycheckRate(rates, periodEnd, periods, fallbackRate)
 
   return {
     employeeId,
@@ -54,11 +60,20 @@ export function buildPayrollSnapshot(
   employees: { uid: string; displayName: string }[],
   entries: TimeEntry[],
   ratesByEmployee: Map<string, EmployeeRate[]>,
+  periods: PayPeriod[],
+  fallbackRatesByEmployee: Map<string, number>,
 ): PayrollLineItem[] {
   const lines: PayrollLineItem[] = []
   for (const emp of employees) {
     const rates = ratesByEmployee.get(emp.uid) ?? []
-    const line = buildPayrollForEmployee(emp.uid, emp.displayName, entries, rates)
+    const line = buildPayrollForEmployee(
+      emp.uid,
+      emp.displayName,
+      entries,
+      rates,
+      periods,
+      fallbackRatesByEmployee.get(emp.uid) ?? 0,
+    )
     if (line) lines.push(line)
   }
   return lines.sort((a, b) => a.employeeName.localeCompare(b.employeeName))

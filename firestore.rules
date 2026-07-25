@@ -34,6 +34,10 @@ service cloud.firestore {
       return entryId.matches('^' + request.auth.uid + '_.+');
     }
 
+    function isOwnPaySlipId(slipId) {
+      return slipId.matches('^.+_' + request.auth.uid + '$');
+    }
+
     match /users/{userId} {
       allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
       allow create: if false;
@@ -55,7 +59,10 @@ service cloud.firestore {
     match /timeEntries/{entryId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
-        (isEmployee() && isOwnTimeEntryId(entryId))
+        (isEmployee() && (
+          isOwnTimeEntryId(entryId) ||
+          resource.data.employeeId == request.auth.uid
+        ))
       );
       allow create: if isSignedIn() && (
         isAdmin() ||
@@ -91,7 +98,10 @@ service cloud.firestore {
     match /paySlips/{slipId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
-        (isEmployee() && resource.data.employeeId == request.auth.uid)
+        (isEmployee() && (
+          isOwnPaySlipId(slipId) ||
+          resource.data.employeeId == request.auth.uid
+        ))
       );
       allow create, update: if isAdmin();
       allow delete: if false;

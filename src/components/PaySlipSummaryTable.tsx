@@ -69,6 +69,15 @@ export function PaySlipSummaryTable({ slips, selectedId, onSelect }: PaySlipSumm
           {onSelect && <td />}
         </tr>
       }
+      mobileFooter={
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-semibold text-slate-900">Total</p>
+            <p className="text-sm text-slate-600">{formatDecimalHours(totalHours)} hours</p>
+          </div>
+          <span className="text-lg font-bold text-brand-700">{formatCurrency(totalGross)}</span>
+        </div>
+      }
     />
   )
 }

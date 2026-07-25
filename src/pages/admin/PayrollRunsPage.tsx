@@ -67,9 +67,14 @@ export function PayrollRunsPage() {
   const [emailOnFinalize, setEmailOnFinalize] = useState(true)
 
   const load = async () => {
-    const periodSnap = await getDocs(
-      query(collection(db, 'payPeriods'), orderBy('startDate', 'desc')),
-    )
+    const [periodSnap, runSnap, empSnap] = await Promise.all([
+      getDocs(query(collection(db, 'payPeriods'), orderBy('startDate', 'desc'))),
+      getDocs(query(collection(db, 'payrollRuns'), orderBy('createdAt', 'desc'))),
+      getDocs(
+        query(collection(db, 'users'), where('role', '==', 'employee'), where('active', '==', true)),
+      ),
+    ])
+
     const periodList = periodSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayPeriod)
     setPeriods(periodList)
 
@@ -78,14 +83,8 @@ export function PayrollRunsPage() {
       openPeriods.some((p) => p.id === current) ? current : openPeriods[0]?.id ?? '',
     )
 
-    const runSnap = await getDocs(
-      query(collection(db, 'payrollRuns'), orderBy('createdAt', 'desc')),
-    )
     setRuns(runSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayrollRun))
 
-    const empSnap = await getDocs(
-      query(collection(db, 'users'), where('role', '==', 'employee'), where('active', '==', true)),
-    )
     setEmployees(
       empSnap.docs
         .map((d) => {
@@ -145,12 +144,14 @@ export function PayrollRunsPage() {
         entries = entries.filter((entry) => selectedEmployeeIds.includes(entry.employeeId))
       }
 
+      // Fetch every employee's rate history in parallel instead of one at a time.
+      const rateLists = await Promise.all(targetEmployees.map((emp) => getEmployeeRates(emp.uid)))
       const ratesByEmployee = new Map<string, Awaited<ReturnType<typeof getEmployeeRates>>>()
       const fallbackRatesByEmployee = new Map<string, number>()
-      for (const emp of targetEmployees) {
-        ratesByEmployee.set(emp.uid, await getEmployeeRates(emp.uid))
+      targetEmployees.forEach((emp, i) => {
+        ratesByEmployee.set(emp.uid, rateLists[i])
         fallbackRatesByEmployee.set(emp.uid, emp.currentHourlyRate ?? 0)
-      }
+      })
 
       const lines = buildPayrollSnapshot(
         targetEmployees.map((e) => ({ uid: e.uid, displayName: e.displayName })),
@@ -210,8 +211,10 @@ export function PayrollRunsPage() {
     try {
       const settingsRef = doc(db, 'settings', 'company')
       const payrollSettingsRef = doc(db, 'settings', 'payroll')
-      const settingsSnap = await getDoc(settingsRef)
-      const payrollSnap = await getDoc(payrollSettingsRef)
+      const [settingsSnap, payrollSnap] = await Promise.all([
+        getDoc(settingsRef),
+        getDoc(payrollSettingsRef),
+      ])
       const settings = (settingsSnap.data() ?? {}) as CompanySettings
       const payrollSettings = payrollSnap.data() ?? {}
       const companyName = settings.companyName?.trim() || DEFAULT_COMPANY_NAME
@@ -539,6 +542,19 @@ export function PayrollRunsPage() {
                   {formatCurrency(displayRun.totalGross)}
                 </td>
               </tr>
+            }
+            mobileFooter={
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-slate-900">Total</p>
+                  <p className="text-sm text-slate-600">
+                    {formatDecimalHours(displayRun.totalHours)} hours
+                  </p>
+                </div>
+                <span className="text-lg font-bold text-brand-700">
+                  {formatCurrency(displayRun.totalGross)}
+                </span>
+              </div>
             }
           />
           </div>

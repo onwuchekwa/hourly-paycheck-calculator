@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, getDocs, query, where } from 'firebase/firestore'
+import { collection, getCountFromServer, getDocs, limit, query, where } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import type { PayPeriod } from '../../lib/types'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
@@ -14,19 +14,19 @@ export function AdminDashboard() {
 
   useEffect(() => {
     const load = async () => {
-      const empSnap = await getDocs(
-        query(collection(db, 'users'), where('role', '==', 'employee'), where('active', '==', true)),
-      )
-      setEmployeeCount(empSnap.size)
-
-      const reviewSnap = await getDocs(
-        query(collection(db, 'timeEntries'), where('status', '==', 'submitted')),
-      )
-      setPendingReview(reviewSnap.size)
-
-      const periodSnap = await getDocs(
-        query(collection(db, 'payPeriods'), where('status', '==', 'open')),
-      )
+      // Counts use server-side aggregation (no document downloads) and all
+      // three requests run in parallel.
+      const [empCount, reviewCount, periodSnap] = await Promise.all([
+        getCountFromServer(
+          query(collection(db, 'users'), where('role', '==', 'employee'), where('active', '==', true)),
+        ),
+        getCountFromServer(
+          query(collection(db, 'timeEntries'), where('status', '==', 'submitted')),
+        ),
+        getDocs(query(collection(db, 'payPeriods'), where('status', '==', 'open'), limit(1))),
+      ])
+      setEmployeeCount(empCount.data().count)
+      setPendingReview(reviewCount.data().count)
       if (!periodSnap.empty) {
         const d = periodSnap.docs[0]
         setOpenPeriod({ id: d.id, ...d.data() } as PayPeriod)

@@ -14,14 +14,16 @@ export function ReportsPage() {
 
   useEffect(() => {
     const load = async () => {
-      const runSnap = await getDocs(
-        query(collection(db, 'payrollRuns'), where('status', '==', 'finalized'), orderBy('createdAt', 'desc')),
-      )
+      const [runSnap, settingsSnap] = await Promise.all([
+        getDocs(
+          query(collection(db, 'payrollRuns'), where('status', '==', 'finalized'), orderBy('createdAt', 'desc')),
+        ),
+        getDoc(doc(db, 'settings', 'company')),
+      ])
       const runList = runSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayrollRun)
       setRuns(runList)
       if (runList.length > 0) setSelectedRunId(runList[0].id)
 
-      const settingsSnap = await getDoc(doc(db, 'settings', 'company'))
       if (settingsSnap.exists()) {
         setCompanyName((settingsSnap.data() as CompanySettings).companyName)
       }

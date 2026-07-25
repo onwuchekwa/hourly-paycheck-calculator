@@ -1,6 +1,4 @@
 import { useRef } from 'react'
-import html2canvas from 'html2canvas'
-import { jsPDF } from 'jspdf'
 import type { PaySlip } from '../lib/types'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { resolveCompanyField, resolveCompanyName } from '../lib/companyBranding'
@@ -24,6 +22,11 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
 
   const handlePdf = async () => {
     if (!ref.current) return
+    // Loaded on demand: these libraries are heavy and only needed for PDF export.
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf'),
+    ])
     const canvas = await html2canvas(ref.current, { scale: 2 })
     const img = canvas.toDataURL('image/png')
     const pdf = new jsPDF('p', 'mm', 'a4')
@@ -103,6 +106,14 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
             <dt className="text-slate-500">Total Hours</dt>
             <dd className="font-medium">{formatDecimalHours(paySlip.totalHours)}</dd>
           </div>
+          <div>
+            <dt className="text-slate-500">Hourly Rate</dt>
+            <dd className="font-medium">{formatCurrency(paySlip.hourlyRate)}/hr</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Gross Pay</dt>
+            <dd className="text-lg font-bold text-brand-700">{formatCurrency(paySlip.grossPay)}</dd>
+          </div>
         </dl>
         <ResponsiveTable
           columns={lineColumns}
@@ -117,6 +128,14 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
                 {formatCurrency(paySlip.grossPay)}
               </td>
             </tr>
+          }
+          mobileFooter={
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-900">Gross Pay</span>
+              <span className="text-lg font-bold text-brand-700">
+                {formatCurrency(paySlip.grossPay)}
+              </span>
+            </div>
           }
         />
       </div>

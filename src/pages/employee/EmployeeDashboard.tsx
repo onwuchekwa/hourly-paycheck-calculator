@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, getDocs, query, where } from 'firebase/firestore'
+import { collection, getCountFromServer, getDocs, query, where } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { PaySlip } from '../../lib/types'
@@ -19,14 +19,25 @@ export function EmployeeDashboard() {
   useEffect(() => {
     if (!profile) return
     const load = async () => {
-      await autoCloseStalePunches(profile.uid)
-
       const year = new Date().getFullYear().toString()
       const slipsQ = query(
         collection(db, 'paySlips'),
         where('employeeId', '==', profile.uid),
       )
-      const slipsSnap = await getDocs(slipsQ)
+      const entriesQ = query(
+        collection(db, 'timeEntries'),
+        where('employeeId', '==', profile.uid),
+        where('status', 'in', ['draft', 'submitted', 'rejected']),
+      )
+
+      // Stale-punch cleanup only touches punch times (not entry statuses), so
+      // it can safely run alongside the dashboard reads.
+      const [slipsSnap, entriesCount] = await Promise.all([
+        getDocs(slipsQ),
+        getCountFromServer(entriesQ),
+        autoCloseStalePunches(profile.uid),
+      ])
+
       const slips = slipsSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }) as PaySlip)
         .filter((s) => s.payPeriodStart.startsWith(year))
@@ -34,14 +45,7 @@ export function EmployeeDashboard() {
 
       setYtdGross(slips.reduce((sum, s) => sum + s.grossPay, 0))
       setRecentSlips(slips.slice(0, 3))
-
-      const entriesQ = query(
-        collection(db, 'timeEntries'),
-        where('employeeId', '==', profile.uid),
-        where('status', 'in', ['draft', 'submitted', 'rejected']),
-      )
-      const entriesSnap = await getDocs(entriesQ)
-      setPendingCount(entriesSnap.size)
+      setPendingCount(entriesCount.data().count)
       setLoading(false)
     }
     void load()

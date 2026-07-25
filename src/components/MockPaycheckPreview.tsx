@@ -129,6 +129,14 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
             <td />
           </tr>
         }
+        mobileFooter={
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-slate-900">Estimated Gross Pay</span>
+            <span className="text-lg font-bold text-brand-700">
+              {formatCurrency(preview.grossPay)}
+            </span>
+          </div>
+        }
       />
     </div>
   )

@@ -17,6 +17,8 @@ interface ResponsiveTableProps<T extends object> {
   keyField: keyof T & string
   emptyMessage?: string
   footer?: ReactNode
+  /** Summary shown below the stacked cards on mobile, where <tfoot> is hidden. */
+  mobileFooter?: ReactNode
   onRowClick?: (row: T) => void
   selectedKey?: string
 }
@@ -27,6 +29,7 @@ export function ResponsiveTable<T extends object>({
   keyField,
   emptyMessage = 'No records found.',
   footer,
+  mobileFooter,
   onRowClick,
   selectedKey,
 }: ResponsiveTableProps<T>) {
@@ -135,6 +138,11 @@ export function ResponsiveTable<T extends object>({
             </div>
           )
         })}
+        {mobileFooter && (
+          <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4">
+            {mobileFooter}
+          </div>
+        )}
       </div>
     </>
   )

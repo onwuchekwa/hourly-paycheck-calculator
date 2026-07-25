@@ -71,16 +71,21 @@ export function buildMockPaycheckForEmployee(
   payPeriodEnd: string,
   entries: TimeEntry[],
   rates: EmployeeRate[],
+  fallbackRate = 0,
 ): MockPaycheckPreview | null {
   const completed = entries.filter(
-    (e) => e.employeeId === employeeId && hasCompletedPunch(normalizeEntry(e)),
+    (e) =>
+      e.employeeId === employeeId &&
+      e.workDate >= payPeriodStart &&
+      e.workDate <= payPeriodEnd &&
+      hasCompletedPunch(normalizeEntry(e)),
   )
   if (completed.length === 0) return null
 
   const dayBreakdown: MockPaycheckDayLine[] = completed.map((e) => {
     const normalized = normalizeEntry(e)
     const hours = calcEntryHours(normalized)
-    const rate = getRateForDate(rates, e.workDate)
+    const rate = getRateForDate(rates, e.workDate, fallbackRate)
     return {
       workDate: e.workDate,
       hours,
@@ -92,7 +97,10 @@ export function buildMockPaycheckForEmployee(
 
   const totalHours = dayBreakdown.reduce((s, d) => s + d.hours, 0)
   const grossPay = dayBreakdown.reduce((s, d) => s + d.amount, 0)
-  const avgRate = totalHours > 0 ? grossPay / totalHours : getRateForDate(rates, formatDate(new Date()))
+  const avgRate =
+    totalHours > 0
+      ? grossPay / totalHours
+      : getRateForDate(rates, payPeriodEnd, fallbackRate)
 
   return {
     payPeriodId,

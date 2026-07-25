@@ -18,11 +18,15 @@ export async function getEmployeeRates(employeeId: string): Promise<EmployeeRate
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as EmployeeRate)
 }
 
-export function getRateForDate(rates: EmployeeRate[], workDate: string): number {
+export function getRateForDate(
+  rates: EmployeeRate[],
+  workDate: string,
+  fallbackRate = 0,
+): number {
   const applicable = rates
     .filter((r) => r.effectiveFrom <= workDate)
     .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))
-  return applicable[0]?.hourlyRate ?? 0
+  return applicable[0]?.hourlyRate ?? fallbackRate
 }
 
 /** @alias getRateForDate */

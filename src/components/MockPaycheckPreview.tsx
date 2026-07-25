@@ -17,8 +17,9 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
       </div>
 
       <div role="status" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Estimate only. Only approved time is included in actual payroll. Draft, submitted, or rejected
-        hours may change or be excluded.
+        Estimate only for this pay period. Hourly rates reflect your effective rate on each work date.
+        Only approved time is included in actual payroll; draft, submitted, or rejected hours may change
+        or be excluded.
       </div>
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-6">
@@ -27,7 +28,7 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
           <dd className="font-medium">{preview.employeeName}</dd>
         </div>
         <div>
-          <dt className="text-slate-500">Avg. Rate</dt>
+          <dt className="text-slate-500">Hourly Rate</dt>
           <dd className="font-medium">{formatCurrency(preview.hourlyRate)}/hr</dd>
         </div>
         <div>

@@ -184,8 +184,7 @@ Add these repository secrets:
 - `VITE_FIREBASE_STORAGE_BUCKET`
 - `VITE_FIREBASE_MESSAGING_SENDER_ID`
 - `VITE_FIREBASE_APP_ID`
-- `FIREBASE_SERVICE_ACCOUNT` (JSON service account key)
-- `FIREBASE_TOKEN` (for Firestore rules and Cloud Functions deploy on merge)
+- `FIREBASE_SERVICE_ACCOUNT` (JSON service account key — used for Firestore, Functions, and Hosting deploys)
 
 - **Pull requests** → Firebase Hosting preview channel
 - **Push to `main`** → deploy Firestore rules, Cloud Functions, and live Hosting

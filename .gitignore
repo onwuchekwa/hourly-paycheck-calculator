@@ -15,6 +15,7 @@ dist-ssr
 
 # Firebase
 functions/lib
+.firebase-emulator-data
 
 # Editor directories and files
 .vscode/*

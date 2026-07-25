@@ -21,6 +21,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/time-review', label: 'Time Review' },
   { to: '/admin/pay-periods', label: 'Pay Periods' },
   { to: '/admin/payroll', label: 'Payroll Runs' },
+  { to: '/admin/pay-slips', label: 'Pay Slips' },
   { to: '/admin/reports', label: 'Reports' },
   { to: '/admin/settings', label: 'Company' },
 ]

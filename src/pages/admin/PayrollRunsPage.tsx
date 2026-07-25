@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { httpsCallable } from 'firebase/functions'
 import {
   collection,
   getDocs,
@@ -13,11 +14,14 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
-import { db } from '../../lib/firebase'
+import { db, functions } from '../../lib/firebase'
 import type { PayPeriod, PayrollRun, TimeEntry, UserProfile, CompanySettings } from '../../lib/types'
 import { buildPayrollSnapshot } from '../../lib/payroll'
 import { getEmployeeRates } from '../../lib/rates'
 import { formatCurrency } from '../../lib/utils'
+import { getCallableErrorMessage } from '../../lib/errors'
+import { AlertBanner } from '../../components/AlertBanner'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
@@ -30,6 +34,9 @@ export function PayrollRunsPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [finalizeTarget, setFinalizeTarget] = useState<PayrollRun | null>(null)
+  const [emailOnFinalize, setEmailOnFinalize] = useState(true)
 
   const load = async () => {
     const periodSnap = await getDocs(
@@ -125,6 +132,7 @@ export function PayrollRunsPage() {
     if (run.status !== 'preview') return
     setBusy(true)
     setError('')
+    setSuccess('')
     try {
       const settingsRef = doc(db, 'settings', 'company')
       const payrollSettingsRef = doc(db, 'settings', 'payroll')
@@ -185,10 +193,23 @@ export function PayrollRunsPage() {
       }, { merge: true })
 
       await batch.commit()
+
+      if (emailOnFinalize) {
+        const emailBatchFn = httpsCallable<
+          { payrollRunId: string },
+          { success: boolean; count: number }
+        >(functions, 'emailPaySlipsBatch')
+        const result = await emailBatchFn({ payrollRunId: run.id })
+        setSuccess(`Payroll finalized. ${result.data.count} pay slip email(s) queued.`)
+      } else {
+        setSuccess('Payroll finalized and pay slips generated.')
+      }
+
+      setFinalizeTarget(null)
       setPreview(null)
       await load()
-    } catch {
-      setError('Failed to finalize payroll.')
+    } catch (err) {
+      setError(getCallableErrorMessage(err, 'Failed to finalize payroll.'))
     } finally {
       setBusy(false)
     }
@@ -223,9 +244,8 @@ export function PayrollRunsPage() {
         <button type="button" onClick={handlePreview} disabled={busy || !selectedPeriodId} className="btn-primary">
           Generate Preview
         </button>
-        {error && (
-          <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
-        )}
+        {error && <AlertBanner variant="error">{error}</AlertBanner>}
+        {success && <AlertBanner variant="success">{success}</AlertBanner>}
       </div>
 
       {displayRun && (
@@ -238,9 +258,24 @@ export function PayrollRunsPage() {
               <StatusBadge status={displayRun.status} />
             </div>
             {displayRun.status === 'preview' && (
-              <button type="button" onClick={() => handleFinalize(displayRun)} disabled={busy} className="btn-primary">
-                Finalize & Generate Pay Slips
-              </button>
+              <div className="flex flex-col items-end gap-3">
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={emailOnFinalize}
+                    onChange={(e) => setEmailOnFinalize(e.target.checked)}
+                  />
+                  Email pay slips to employees after finalizing
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setFinalizeTarget(displayRun)}
+                  disabled={busy}
+                  className="btn-primary"
+                >
+                  Finalize & Generate Pay Slips
+                </button>
+              </div>
             )}
           </div>
           <table className="mt-4 w-full text-sm">
@@ -285,6 +320,20 @@ export function PayrollRunsPage() {
           ))}
         </ul>
       </section>
+
+      <ConfirmDialog
+        open={finalizeTarget !== null}
+        title="Finalize payroll?"
+        description={
+          emailOnFinalize
+            ? 'This will generate pay slips and email them to all employees. This action cannot be undone.'
+            : 'This will generate pay slips for all employees. This action cannot be undone.'
+        }
+        confirmLabel="Finalize"
+        busy={busy}
+        onConfirm={() => finalizeTarget && void handleFinalize(finalizeTarget)}
+        onCancel={() => setFinalizeTarget(null)}
+      />
     </div>
   )
 }

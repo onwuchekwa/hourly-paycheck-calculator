@@ -1,6 +1,17 @@
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 
 export function HomePage() {
+  const { user, profile, loading } = useAuth()
+
+  if (loading) return <LoadingSpinner fullPage />
+
+  if (user && profile) {
+    if (profile.mustChangePassword) return <Navigate to="/change-password" replace />
+    return <Navigate to={profile.role === 'admin' ? '/admin' : '/employee'} replace />
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50 to-white">
       <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">

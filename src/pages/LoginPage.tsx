@@ -1,15 +1,18 @@
 import { useState, type FormEvent } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { AlertBanner } from '../components/AlertBanner'
 import { LoadingSpinner } from '../components/LoadingSpinner'
+import { useFirebaseEmulators } from '../lib/firebase-config'
+import { getAuthErrorMessage } from '../lib/errors'
 
 export function LoginPage() {
   const { login, user, profile, loading } = useAuth()
-  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const usingEmulators = useFirebaseEmulators()
 
   if (loading) return <LoadingSpinner fullPage />
 
@@ -24,9 +27,8 @@ export function LoginPage() {
     setSubmitting(true)
     try {
       await login(email, password)
-      navigate('/')
-    } catch {
-      setError('Invalid email or password. Please try again.')
+    } catch (err) {
+      setError(getAuthErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -46,11 +48,7 @@ export function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="card space-y-4" noValidate>
-          {error && (
-            <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-              {error}
-            </div>
-          )}
+          {error && <AlertBanner variant="error">{error}</AlertBanner>}
           <div>
             <label htmlFor="email" className="label-field">
               Username (email)
@@ -83,6 +81,13 @@ export function LoginPage() {
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
+        {usingEmulators && (
+          <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-center text-sm text-amber-900">
+            Local emulator mode — run <code className="rounded bg-white px-1">npm run seed:emulator</code>{' '}
+            then sign in with <strong>admin@local.test</strong> / <strong>password123</strong>
+          </p>
+        )}
 
         <p className="mt-6 text-center text-sm text-slate-500">
           <Link to="/" className="text-brand-600 hover:underline">

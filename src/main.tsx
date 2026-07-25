@@ -1,10 +1,18 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
+import { FirebaseSetupRequired } from './components/FirebaseSetupRequired'
+import { isFirebaseReady } from './lib/firebase-config'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+const root = createRoot(document.getElementById('root')!)
+
+if (!isFirebaseReady()) {
+  root.render(<FirebaseSetupRequired />)
+} else {
+  const { default: App } = await import('./App.tsx')
+  root.render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+}

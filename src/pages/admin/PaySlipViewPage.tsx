@@ -4,6 +4,8 @@ import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '../../lib/firebase'
 import type { PaySlip } from '../../lib/types'
+import { getCallableErrorMessage } from '../../lib/errors'
+import { AlertBanner } from '../../components/AlertBanner'
 import { PaySlipDocument } from '../../components/PaySlipDocument'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
@@ -15,18 +17,23 @@ export function PaySlipViewPage() {
   const [loading, setLoading] = useState(true)
   const [emailing, setEmailing] = useState(false)
   const [message, setMessage] = useState('')
+  const [messageVariant, setMessageVariant] = useState<'success' | 'error'>('success')
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     const load = async () => {
-      const constraints = runId
-        ? [where('payrollRunId', '==', runId)]
-        : []
-      const q = query(collection(db, 'paySlips'), ...constraints, orderBy('paySlipNumber', 'desc'))
-      const snap = await getDocs(q)
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PaySlip)
-      setSlips(list)
-      if (list.length > 0) setSelected(list[0])
-      setLoading(false)
+      try {
+        const constraints = runId ? [where('payrollRunId', '==', runId)] : []
+        const q = query(collection(db, 'paySlips'), ...constraints, orderBy('paySlipNumber', 'desc'))
+        const snap = await getDocs(q)
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PaySlip)
+        setSlips(list)
+        if (list.length > 0) setSelected(list[0])
+      } catch {
+        setLoadError('Failed to load pay slips.')
+      } finally {
+        setLoading(false)
+      }
     }
     void load()
   }, [runId])
@@ -38,9 +45,11 @@ export function PaySlipViewPage() {
     try {
       const emailFn = httpsCallable<{ paySlipId: string }, { success: boolean }>(functions, 'emailPaySlip')
       await emailFn({ paySlipId: selected.id })
+      setMessageVariant('success')
       setMessage(`Pay slip emailed to ${selected.employeeEmail}`)
-    } catch {
-      setMessage('Failed to send email.')
+    } catch (err) {
+      setMessageVariant('error')
+      setMessage(getCallableErrorMessage(err, 'Failed to send email.'))
     } finally {
       setEmailing(false)
     }
@@ -53,7 +62,9 @@ export function PaySlipViewPage() {
       <h1 className="page-title">Pay Slips</h1>
       <p className="page-subtitle">View and email employee pay slips.</p>
 
-      {slips.length === 0 ? (
+      {loadError && <AlertBanner variant="error" className="mt-4">{loadError}</AlertBanner>}
+
+      {slips.length === 0 && !loadError ? (
         <p className="mt-8 text-slate-600">No pay slips found.</p>
       ) : (
         <div className="mt-8 grid gap-8 lg:grid-cols-3">
@@ -82,7 +93,11 @@ export function PaySlipViewPage() {
                   <button type="button" onClick={handleEmail} disabled={emailing} className="btn-secondary">
                     {emailing ? 'Sending…' : 'Email Pay Slip'}
                   </button>
-                  {message && <span className="text-sm text-slate-600">{message}</span>}
+                  {message && (
+                    <AlertBanner variant={messageVariant} className="flex-1">
+                      {message}
+                    </AlertBanner>
+                  )}
                 </div>
                 <PaySlipDocument paySlip={selected} />
               </>

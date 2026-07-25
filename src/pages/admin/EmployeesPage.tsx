@@ -15,6 +15,9 @@ import { useAuth } from '../../contexts/AuthContext'
 import { db, functions } from '../../lib/firebase'
 import type { EmployeeRate, UserProfile } from '../../lib/types'
 import { formatCurrency, todayString } from '../../lib/utils'
+import { getCallableErrorMessage } from '../../lib/errors'
+import { AlertBanner } from '../../components/AlertBanner'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
 export function EmployeesPage() {
@@ -33,16 +36,22 @@ export function EmployeesPage() {
   const [newRate, setNewRate] = useState('')
   const [effectiveFrom, setEffectiveFrom] = useState(todayString())
   const [rateHistory, setRateHistory] = useState<EmployeeRate[]>([])
+  const [deactivateTarget, setDeactivateTarget] = useState<UserProfile | null>(null)
 
   const loadEmployees = async () => {
-    const q = query(
-      collection(db, 'users'),
-      where('role', '==', 'employee'),
-      orderBy('displayName'),
-    )
-    const snap = await getDocs(q)
-    setEmployees(snap.docs.map((d) => ({ uid: d.id, ...d.data() }) as UserProfile))
-    setLoading(false)
+    try {
+      const q = query(
+        collection(db, 'users'),
+        where('role', '==', 'employee'),
+        orderBy('displayName'),
+      )
+      const snap = await getDocs(q)
+      setEmployees(snap.docs.map((d) => ({ uid: d.id, ...d.data() }) as UserProfile))
+    } catch {
+      setError('Failed to load employees.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -72,17 +81,17 @@ export function EmployeesPage() {
     try {
       const createFn = httpsCallable<
         { displayName: string; email: string; hourlyRate: number },
-        { uid: string; email: string }
+        { uid: string; email: string; mailId: string }
       >(functions, 'createEmployee')
-      await createFn({ displayName, email, hourlyRate: rate })
-      setSuccess(`Employee created. Welcome email sent to ${email}.`)
+      await createFn({ displayName: displayName.trim(), email: email.trim(), hourlyRate: rate })
+      setSuccess(`Employee created. A welcome email with sign-in instructions was sent to ${email.trim()}.`)
       setDisplayName('')
       setEmail('')
       setHourlyRate('')
       setShowForm(false)
       await loadEmployees()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create employee.')
+      setError(getCallableErrorMessage(err, 'Failed to create employee.'))
     } finally {
       setSubmitting(false)
     }
@@ -90,12 +99,17 @@ export function EmployeesPage() {
 
   const toggleActive = async (emp: UserProfile) => {
     const active = emp.active !== false
-    await updateDoc(doc(db, 'users', emp.uid), {
-      active: !active,
-      status: active ? 'inactive' : 'active',
-      updatedAt: serverTimestamp(),
-    })
-    await loadEmployees()
+    try {
+      await updateDoc(doc(db, 'users', emp.uid), {
+        active: !active,
+        status: active ? 'inactive' : 'active',
+        updatedAt: serverTimestamp(),
+      })
+      setDeactivateTarget(null)
+      await loadEmployees()
+    } catch {
+      setError(`Failed to ${active ? 'deactivate' : 'reactivate'} employee.`)
+    }
   }
 
   const openRateModal = async (emp: UserProfile) => {
@@ -172,12 +186,8 @@ export function EmployeesPage() {
 
       {showForm && (
         <form onSubmit={handleCreate} className="card mt-6 max-w-lg space-y-4">
-          {error && (
-            <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
-          )}
-          {success && (
-            <div role="status" className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{success}</div>
-          )}
+          {error && <AlertBanner variant="error">{error}</AlertBanner>}
+          {success && <AlertBanner variant="success">{success}</AlertBanner>}
           <div>
             <label htmlFor="name" className="label-field">Full name</label>
             <input id="name" className="input-field" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
@@ -219,7 +229,11 @@ export function EmployeesPage() {
                     <button type="button" onClick={() => openRateModal(e)} className="btn-secondary text-xs">
                       Change rate
                     </button>
-                    <button type="button" onClick={() => toggleActive(e)} className="btn-secondary text-xs">
+                    <button
+                      type="button"
+                      onClick={() => (e.active !== false ? setDeactivateTarget(e) : toggleActive(e))}
+                      className="btn-secondary text-xs"
+                    >
                       {e.active !== false ? 'Deactivate' : 'Reactivate'}
                     </button>
                   </div>
@@ -229,6 +243,16 @@ export function EmployeesPage() {
           </tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        open={deactivateTarget !== null}
+        title="Deactivate employee?"
+        description={`${deactivateTarget?.displayName} will no longer be able to sign in or appear in new payroll runs.`}
+        confirmLabel="Deactivate"
+        variant="danger"
+        onConfirm={() => deactivateTarget && void toggleActive(deactivateTarget)}
+        onCancel={() => setDeactivateTarget(null)}
+      />
 
       {rateEmployee && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">

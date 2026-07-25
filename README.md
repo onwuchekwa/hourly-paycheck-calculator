@@ -18,14 +18,15 @@ A Firebase-powered hourly payroll application for small teams. Employers manage 
 - Vite + React + TypeScript
 - Tailwind CSS v4
 - Firebase (Auth, Firestore, Cloud Functions, Hosting)
-- Trigger Email extension (mail collection)
+- Nodemailer SMTP delivery via Cloud Functions (mail collection queue)
 - jsPDF + html2canvas for pay slip PDF export
 
 ## Prerequisites
 
 - Node.js 20+
 - Firebase CLI: `npm install -g firebase-tools` or use `npx firebase-tools@latest`
-- A Firebase project with Blaze plan (for Cloud Functions + Trigger Email)
+- A Firebase project with Blaze plan (for Cloud Functions)
+- An SMTP provider (SendGrid, Mailgun, Amazon SES, etc.) for sending emails
 
 ## Setup
 
@@ -45,13 +46,27 @@ In Firebase Console:
 2. **Firestore** → Create database (production mode)
 3. **Functions** → Enable (requires Blaze plan)
 
-### 3. Install Trigger Email extension
+### 3. Configure email (SMTP)
+
+HourlyPay sends welcome emails when employees are created and pay slip emails on demand or after payroll finalize.
 
 ```bash
-npx firebase-tools@latest ext:install firebase/firestore-send-email
+node scripts/configure-smtp.mjs   # prints full setup guide
+cp functions/.env.example functions/.env   # for local emulators
 ```
 
-Configure the extension to watch the `mail` collection.
+**Production:**
+
+```bash
+# Set SMTP password as a secret
+npx firebase-tools@latest functions:secrets:set SMTP_PASS
+
+# Deploy — set other params during deploy or in Firebase Console → Functions → Environment
+# SMTP_HOST, SMTP_PORT (587), SMTP_USER, SMTP_FROM, APP_SIGN_IN_URL
+npx firebase-tools@latest deploy --only functions
+```
+
+Set **Company email** in Admin → Company Settings (used as reply-to on outgoing mail).
 
 ### 4. Configure environment
 
@@ -125,11 +140,32 @@ npx tsx scripts/createEmployer.ts --email admin@company.com --name "Admin User" 
 
 ### 9. Run locally
 
+HourlyPay is a **Firebase client app**. `npm run dev` only starts the Vite UI — auth, Firestore data, and Cloud Functions still need Firebase (local emulators or a cloud project).
+
+**Option A — Firebase Emulators (no cloud project)**
+
+Requires **Java 11+** for the Firestore emulator.
+
 ```bash
+cp .env.example .env
+# Set VITE_USE_FIREBASE_EMULATORS=true (see .env.example)
+npm run dev:local
+npm run seed:emulator
+```
+
+Open http://localhost:5173 and sign in with **admin@local.test** / **password123**.
+
+Emulator UI: http://localhost:4000
+
+**Option B — Real Firebase project (no Java needed)**
+
+```bash
+cp .env.example .env
+# Fill in Firebase Console web app config; set VITE_USE_FIREBASE_EMULATORS=false
 npm run dev
 ```
 
-Open http://localhost:5173
+Create an employer account (see step 8), then sign in.
 
 ### 10. Build & deploy hosting
 
@@ -165,16 +201,35 @@ src/
     employee/     Dashboard, Timesheet, TimeHistory, PaySlips, Settings
     admin/        Dashboard, Employees, TimeReview, Payroll, Reports
 functions/
-  src/index.ts    createEmployee, clearMustChangePassword, emailPaySlip
+  src/
+    index.ts        createEmployee, emailPaySlip, emailPaySlipsBatch
+    email.ts        HTML email templates
+    deliverMail.ts  Firestore trigger — sends queued mail via SMTP
 ```
 
 ## Cloud Functions
 
 | Function | Description |
 |----------|-------------|
-| `createEmployee` | Creates Auth user, Firestore profile, initial rate, welcome email |
+| `createEmployee` | Creates Auth user, Firestore profile, initial rate, queues welcome email |
 | `clearMustChangePassword` | Clears `mustChangePassword` after password change |
-| `emailPaySlip` | Sends pay slip summary via Trigger Email |
+| `emailPaySlip` | Queues a single pay slip email |
+| `emailPaySlipsBatch` | Queues pay slip emails for all slips in a payroll run |
+| `deliverMail` | Firestore trigger — delivers queued `mail` documents via SMTP |
+
+## Email delivery
+
+1. Callable functions write to the `mail` collection with `delivery.state: PENDING`
+2. `deliverMail` trigger sends via SMTP and updates `delivery.state` to `SUCCESS` or `ERROR`
+3. Check Firestore `mail` documents to verify delivery status
+
+| `delivery.state` | Meaning |
+|------------------|---------|
+| `PENDING` | Queued, waiting for trigger |
+| `PROCESSING` | Currently sending |
+| `SUCCESS` | Delivered |
+| `ERROR` | SMTP failed — see `delivery.error` |
+| `SKIPPED` | SMTP not configured |
 
 ## Collections
 
@@ -188,7 +243,7 @@ functions/
 | `paySlips` | Generated pay slips |
 | `settings/company` | Company info for pay slips |
 | `settings/payroll` | Pay slip number counter |
-| `mail` | Trigger Email outbound queue |
+| `mail` | Outbound email queue (processed by `deliverMail` trigger) |
 
 ## License
 

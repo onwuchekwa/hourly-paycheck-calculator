@@ -3,7 +3,13 @@ import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { TimeEntry } from '../../lib/types'
-import { formatDisplayDate, formatDuration, formatTime } from '../../lib/utils'
+import {
+  formatEntryDuration,
+  formatPunchDuration,
+  getPunches,
+  normalizeEntry,
+} from '../../lib/timeEntries'
+import { formatDisplayDate, formatTime } from '../../lib/utils'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
@@ -21,7 +27,9 @@ export function TimeHistoryPage() {
         orderBy('workDate', 'desc'),
       )
       const snap = await getDocs(q)
-      setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as TimeEntry))
+      setEntries(
+        snap.docs.map((d) => normalizeEntry({ id: d.id, ...d.data() } as TimeEntry)),
+      )
       setLoading(false)
     }
     void load()
@@ -37,29 +45,38 @@ export function TimeHistoryPage() {
       {entries.length === 0 ? (
         <p className="mt-8 text-slate-600">No time entries yet.</p>
       ) : (
-        <div className="mt-8 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-slate-500">
-                <th className="pb-3 pr-4 font-medium">Date</th>
-                <th className="pb-3 pr-4 font-medium">In</th>
-                <th className="pb-3 pr-4 font-medium">Out</th>
-                <th className="pb-3 pr-4 font-medium">Hours</th>
-                <th className="pb-3 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((e) => (
-                <tr key={e.id} className="border-b border-slate-100">
-                  <td className="py-3 pr-4">{formatDisplayDate(e.workDate)}</td>
-                  <td className="py-3 pr-4">{formatTime(e.clockIn)}</td>
-                  <td className="py-3 pr-4">{formatTime(e.clockOut)}</td>
-                  <td className="py-3 pr-4">{formatDuration(e.clockIn, e.clockOut)}</td>
-                  <td className="py-3"><StatusBadge status={e.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-8 space-y-4">
+          {entries.map((e) => {
+            const punches = getPunches(e)
+            return (
+              <div key={e.id} className="card">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-slate-900">{formatDisplayDate(e.workDate)}</p>
+                    <p className="text-sm text-slate-600">
+                      {punches.length} session{punches.length === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-brand-700">{formatEntryDuration(e)}</span>
+                    <StatusBadge status={e.status} />
+                  </div>
+                </div>
+                {punches.length > 0 && (
+                  <ul className="mt-3 space-y-1 border-t border-slate-100 pt-3 text-sm">
+                    {punches.map((punch, index) => (
+                      <li key={index} className="flex justify-between text-slate-700">
+                        <span>
+                          {formatTime(punch.clockIn)} – {punch.clockOut ? formatTime(punch.clockOut) : 'Open'}
+                        </span>
+                        <span className="font-medium">{formatPunchDuration(punch)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

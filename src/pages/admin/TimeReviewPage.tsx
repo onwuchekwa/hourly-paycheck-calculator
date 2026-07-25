@@ -14,12 +14,17 @@ import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { TimeEntry } from '../../lib/types'
 import {
-  formatDisplayDate,
-  formatDuration,
-  formatTime,
-  timestampToInputValue,
-  inputValueToDate,
-} from '../../lib/utils'
+  formatEntryDuration,
+  formatPunchDuration,
+  getPunches,
+  normalizeEntry,
+  parseEditRows,
+  punchesToEditRows,
+  punchesToFirestore,
+  serializePunchesForHistory,
+  type EditPunchRow,
+} from '../../lib/timeEntries'
+import { formatDisplayDate, formatTime } from '../../lib/utils'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
@@ -29,8 +34,7 @@ export function TimeReviewPage() {
   const [filter, setFilter] = useState<'submitted' | 'all'>('submitted')
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editIn, setEditIn] = useState('')
-  const [editOut, setEditOut] = useState('')
+  const [editRows, setEditRows] = useState<EditPunchRow[]>([{ clockIn: '', clockOut: '' }])
   const [editReason, setEditReason] = useState('')
   const [rejectReason, setRejectReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -42,7 +46,7 @@ export function TimeReviewPage() {
       : []
     const q = query(collection(db, 'timeEntries'), ...constraints, orderBy('workDate', 'desc'))
     const snap = await getDocs(q)
-    setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as TimeEntry))
+    setEntries(snap.docs.map((d) => normalizeEntry({ id: d.id, ...d.data() } as TimeEntry)))
     setLoading(false)
   }
 
@@ -109,23 +113,22 @@ export function TimeReviewPage() {
 
   const handleEdit = async (entry: TimeEntry) => {
     if (editReason.trim().length < 10) return
-    const inDate = inputValueToDate(editIn)
-    const outDate = inputValueToDate(editOut)
-    if (!inDate || !outDate || outDate <= inDate) return
+    const parsed = parseEditRows(editRows)
+    if (!parsed.ok) return
     setBusy(true)
+    const previousPunches = getPunches(entry)
     const historyEntry = {
       editedAt: Timestamp.now(),
       editedBy: user!.uid,
       editedByName: profile!.displayName,
       reason: editReason.trim(),
-      previousClockIn: entry.clockIn ? timestampToInputValue(entry.clockIn) : null,
-      previousClockOut: entry.clockOut ? timestampToInputValue(entry.clockOut) : null,
-      newClockIn: editIn,
-      newClockOut: editOut,
+      previousPunches: serializePunchesForHistory(previousPunches),
+      newPunches: serializePunchesForHistory(parsed.punches),
     }
     await updateDoc(doc(db, 'timeEntries', entry.id), {
-      clockIn: Timestamp.fromDate(inDate),
-      clockOut: Timestamp.fromDate(outDate),
+      punches: punchesToFirestore(parsed.punches),
+      clockIn: null,
+      clockOut: null,
       punchSource: 'manual_edit',
       editHistory: [...(entry.editHistory ?? []), historyEntry],
       updatedAt: serverTimestamp(),
@@ -138,9 +141,20 @@ export function TimeReviewPage() {
 
   const startEdit = (entry: TimeEntry) => {
     setEditingId(entry.id)
-    setEditIn(timestampToInputValue(entry.clockIn))
-    setEditOut(timestampToInputValue(entry.clockOut))
+    setEditRows(punchesToEditRows(entry))
     setEditReason('')
+  }
+
+  const updateEditRow = (index: number, field: 'clockIn' | 'clockOut', value: string) => {
+    setEditRows((rows) => rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)))
+  }
+
+  const addEditRow = () => {
+    setEditRows((rows) => [...rows, { clockIn: '', clockOut: '' }])
+  }
+
+  const removeEditRow = (index: number) => {
+    setEditRows((rows) => (rows.length <= 1 ? rows : rows.filter((_, i) => i !== index)))
   }
 
   if (loading) return <LoadingSpinner />
@@ -176,59 +190,107 @@ export function TimeReviewPage() {
         {entries.length === 0 ? (
           <p className="text-slate-600">No entries to review.</p>
         ) : (
-          entries.map((e) => (
-            <div key={e.id} className="card">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <p className="font-semibold">{e.employeeName}</p>
-                  <p className="text-sm text-slate-600">{formatDisplayDate(e.workDate)}</p>
-                </div>
-                <StatusBadge status={e.status} />
-              </div>
-              <p className="mt-2 text-sm">
-                {formatTime(e.clockIn)} – {formatTime(e.clockOut)} ({formatDuration(e.clockIn, e.clockOut)})
-              </p>
-
-              {editingId === e.id ? (
-                <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
-                  <input type="datetime-local" className="input-field" value={editIn} onChange={(ev) => setEditIn(ev.target.value)} />
-                  <input type="datetime-local" className="input-field" value={editOut} onChange={(ev) => setEditOut(ev.target.value)} />
-                  <textarea
-                    className="input-field min-h-16"
-                    placeholder="Reason (min 10 chars)"
-                    value={editReason}
-                    onChange={(ev) => setEditReason(ev.target.value)}
-                  />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => handleEdit(e)} disabled={busy} className="btn-primary text-xs">Save</button>
-                    <button type="button" onClick={() => setEditingId(null)} className="btn-secondary text-xs">Cancel</button>
+          entries.map((e) => {
+            const punches = getPunches(e)
+            return (
+              <div key={e.id} className="card">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">{e.employeeName}</p>
+                    <p className="text-sm text-slate-600">{formatDisplayDate(e.workDate)}</p>
                   </div>
+                  <StatusBadge status={e.status} />
                 </div>
-              ) : (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {e.status === 'submitted' && (
-                    <>
-                      <button type="button" onClick={() => handleApprove(e.id)} disabled={busy} className="btn-primary text-xs">Approve</button>
-                      <input
-                        type="text"
-                        placeholder="Rejection reason"
-                        className="input-field max-w-xs text-xs"
-                        value={rejectReason}
-                        onChange={(ev) => setRejectReason(ev.target.value)}
-                      />
-                      <button type="button" onClick={() => handleReject(e.id)} disabled={busy} className="btn-danger text-xs">Reject</button>
-                    </>
-                  )}
-                  {e.status === 'rejected' && (
-                    <button type="button" onClick={() => handleReturnToDraft(e.id)} disabled={busy} className="btn-secondary text-xs">
-                      Return to Draft
+
+                {punches.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">No sessions recorded.</p>
+                ) : (
+                  <ul className="mt-3 space-y-1 text-sm">
+                    {punches.map((punch, index) => (
+                      <li key={index} className="flex justify-between text-slate-700">
+                        <span>
+                          {formatTime(punch.clockIn)} – {punch.clockOut ? formatTime(punch.clockOut) : 'Open'}
+                        </span>
+                        <span className="font-medium">{formatPunchDuration(punch)}</span>
+                      </li>
+                    ))}
+                    <li className="flex justify-between border-t border-slate-100 pt-2 font-semibold">
+                      <span>Total</span>
+                      <span>{formatEntryDuration(e)}</span>
+                    </li>
+                  </ul>
+                )}
+
+                {editingId === e.id ? (
+                  <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+                    {editRows.map((row, index) => (
+                      <div key={index} className="space-y-2 rounded-lg border border-slate-200 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-slate-600">Session {index + 1}</span>
+                          {editRows.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeEditRow(index)}
+                              className="text-xs text-red-600 hover:underline"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="datetime-local"
+                          className="input-field"
+                          value={row.clockIn}
+                          onChange={(ev) => updateEditRow(index, 'clockIn', ev.target.value)}
+                        />
+                        <input
+                          type="datetime-local"
+                          className="input-field"
+                          value={row.clockOut}
+                          onChange={(ev) => updateEditRow(index, 'clockOut', ev.target.value)}
+                        />
+                      </div>
+                    ))}
+                    <button type="button" onClick={addEditRow} className="btn-secondary text-xs">
+                      Add session
                     </button>
-                  )}
-                  <button type="button" onClick={() => startEdit(e)} disabled={busy} className="btn-secondary text-xs">Edit</button>
-                </div>
-              )}
-            </div>
-          ))
+                    <textarea
+                      className="input-field min-h-16"
+                      placeholder="Reason (min 10 chars)"
+                      value={editReason}
+                      onChange={(ev) => setEditReason(ev.target.value)}
+                    />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => handleEdit(e)} disabled={busy} className="btn-primary text-xs">Save</button>
+                      <button type="button" onClick={() => setEditingId(null)} className="btn-secondary text-xs">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {e.status === 'submitted' && (
+                      <>
+                        <button type="button" onClick={() => handleApprove(e.id)} disabled={busy} className="btn-primary text-xs">Approve</button>
+                        <input
+                          type="text"
+                          placeholder="Rejection reason"
+                          className="input-field max-w-xs text-xs"
+                          value={rejectReason}
+                          onChange={(ev) => setRejectReason(ev.target.value)}
+                        />
+                        <button type="button" onClick={() => handleReject(e.id)} disabled={busy} className="btn-danger text-xs">Reject</button>
+                      </>
+                    )}
+                    {e.status === 'rejected' && (
+                      <button type="button" onClick={() => handleReturnToDraft(e.id)} disabled={busy} className="btn-secondary text-xs">
+                        Return to Draft
+                      </button>
+                    )}
+                    <button type="button" onClick={() => startEdit(e)} disabled={busy} className="btn-secondary text-xs">Edit</button>
+                  </div>
+                )}
+              </div>
+            )
+          })
         )}
       </div>
     </div>

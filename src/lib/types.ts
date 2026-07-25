@@ -4,7 +4,12 @@ export type UserRole = 'admin' | 'employer' | 'employee'
 
 export type TimeEntryStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
 
-export type PunchSource = 'button' | 'manual_edit'
+export type PunchSource = 'button' | 'manual_edit' | 'auto_eod'
+
+export interface TimePunch {
+  clockIn: Timestamp
+  clockOut?: Timestamp | null
+}
 
 export interface UserProfile {
   uid: string
@@ -24,6 +29,9 @@ export interface EditHistoryEntry {
   editedBy: string
   editedByName: string
   reason: string
+  previousPunches?: string | null
+  newPunches?: string | null
+  /** @deprecated legacy single-punch fields */
   previousClockIn?: string | null
   previousClockOut?: string | null
   newClockIn?: string | null
@@ -35,6 +43,8 @@ export interface TimeEntry {
   employeeId: string
   employeeName: string
   workDate: string
+  punches?: TimePunch[]
+  /** @deprecated use punches; kept for lazy migration reads */
   clockIn?: Timestamp | null
   clockOut?: Timestamp | null
   status: TimeEntryStatus

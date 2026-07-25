@@ -1,5 +1,6 @@
 import type { PaySlipDayLine, PayrollLineItem, TimeEntry, EmployeeRate } from './types'
-import { calcHours, formatDate } from './utils'
+import { calcEntryHours, hasCompletedPunch, normalizeEntry } from './timeEntries'
+import { formatDate } from './utils'
 import { getRateForDate } from './rates'
 
 export function buildPayrollForEmployee(
@@ -9,12 +10,13 @@ export function buildPayrollForEmployee(
   rates: EmployeeRate[],
 ): PayrollLineItem | null {
   const approved = entries.filter(
-    (e) => e.employeeId === employeeId && e.status === 'approved' && e.clockIn && e.clockOut,
+    (e) => e.employeeId === employeeId && e.status === 'approved' && hasCompletedPunch(normalizeEntry(e)),
   )
   if (approved.length === 0) return null
 
   const dayBreakdown: PaySlipDayLine[] = approved.map((e) => {
-    const hours = calcHours(e.clockIn, e.clockOut)
+    const normalized = normalizeEntry(e)
+    const hours = calcEntryHours(normalized)
     const rate = getRateForDate(rates, e.workDate)
     return {
       workDate: e.workDate,

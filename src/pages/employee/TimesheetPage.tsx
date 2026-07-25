@@ -11,12 +11,26 @@ import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { TimeEntry } from '../../lib/types'
 import {
+  autoCloseStalePunches,
+  canSubmitEntry,
+  fetchEmployeeEntries,
+  findGlobalOpenPunch,
+  formatEntryDuration,
+  formatPunchDuration,
+  getOpenPunch,
+  getPunches,
+  normalizeEntry,
+  parseEditRows,
+  punchesToEditRows,
+  punchesToFirestore,
+  serializePunchesForHistory,
+  type EditPunchRow,
+} from '../../lib/timeEntries'
+import {
   formatDate,
-  formatDuration,
+  formatDisplayDate,
   formatTime,
   timeEntryDocId,
-  timestampToInputValue,
-  inputValueToDate,
 } from '../../lib/utils'
 import { DatePicker } from '../../components/DatePicker'
 import { StatusBadge } from '../../components/StatusBadge'
@@ -26,57 +40,67 @@ export function TimesheetPage() {
   const { profile, user } = useAuth()
   const [workDate, setWorkDate] = useState(formatDate(new Date()))
   const [entry, setEntry] = useState<TimeEntry | null>(null)
+  const [globalOpenEntryId, setGlobalOpenEntryId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [showEdit, setShowEdit] = useState(false)
-  const [editIn, setEditIn] = useState('')
-  const [editOut, setEditOut] = useState('')
+  const [editRows, setEditRows] = useState<EditPunchRow[]>([{ clockIn: '', clockOut: '' }])
   const [editReason, setEditReason] = useState('')
 
   const employeeId = profile?.uid ?? ''
   const docId = timeEntryDocId(employeeId, workDate)
+  const normalizedEntry = entry ? normalizeEntry(entry) : null
+  const punches = getPunches(normalizedEntry)
   const readOnly = entry ? !['draft', 'submitted'].includes(entry.status) : false
+  const hasGlobalOpen = globalOpenEntryId !== null
+  const openOnThisDay = normalizedEntry ? getOpenPunch(normalizedEntry) !== null : false
+  const showClockIn = !readOnly && !hasGlobalOpen
+  const showClockOut = !readOnly && hasGlobalOpen
+
+  const refreshGlobalOpen = async () => {
+    if (!employeeId) return
+    const entries = await fetchEmployeeEntries(employeeId)
+    const open = findGlobalOpenPunch(entries)
+    setGlobalOpenEntryId(open?.entryId ?? null)
+  }
+
+  const loadEntry = async () => {
+    if (!employeeId) return
+    setLoading(true)
+    setError('')
+    try {
+      await autoCloseStalePunches(employeeId)
+      const snap = await getDoc(doc(db, 'timeEntries', docId))
+      if (snap.exists()) {
+        setEntry(normalizeEntry({ id: snap.id, ...snap.data() } as TimeEntry))
+      } else {
+        setEntry(null)
+      }
+      await refreshGlobalOpen()
+      setShowEdit(false)
+    } catch {
+      setError('Unable to load timesheet. Please try again or contact your employer.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    if (!employeeId) return
-    const load = async () => {
-      setLoading(true)
-      setError('')
-      try {
-        const snap = await getDoc(doc(db, 'timeEntries', docId))
-        if (snap.exists()) {
-          const data = { id: snap.id, ...snap.data() } as TimeEntry
-          setEntry(data)
-          setEditIn(timestampToInputValue(data.clockIn))
-          setEditOut(timestampToInputValue(data.clockOut))
-        } else {
-          setEntry(null)
-          setEditIn('')
-          setEditOut('')
-        }
-        setShowEdit(false)
-      } catch {
-        setError('Unable to load timesheet. Please try again or contact your employer.')
-      } finally {
-        setLoading(false)
-      }
-    }
-    void load()
+    void loadEntry()
   }, [employeeId, docId, workDate])
 
   const ensureEntry = async (): Promise<TimeEntry> => {
     const ref = doc(db, 'timeEntries', docId)
     const snap = await getDoc(ref)
-    if (snap.exists()) return { id: snap.id, ...snap.data() } as TimeEntry
+    if (snap.exists()) return normalizeEntry({ id: snap.id, ...snap.data() } as TimeEntry)
 
     const newEntry: Omit<TimeEntry, 'id'> = {
       employeeId,
       employeeName: profile?.displayName ?? '',
       workDate,
       status: 'draft',
-      clockIn: null,
-      clockOut: null,
+      punches: [],
     }
     await setDoc(ref, { ...newEntry, updatedAt: serverTimestamp() })
     return { id: docId, ...newEntry }
@@ -86,18 +110,29 @@ export function TimesheetPage() {
     setBusy(true)
     setError('')
     try {
-      const current = await ensureEntry()
-      if (current.clockIn) {
-        setError('Already clocked in for this date.')
+      await autoCloseStalePunches(employeeId)
+      const entries = await fetchEmployeeEntries(employeeId)
+      const open = findGlobalOpenPunch(entries)
+      if (open) {
+        const dateLabel = formatDisplayDate(open.entry.workDate)
+        setError(`Clock out your open session from ${dateLabel} before starting a new one.`)
+        setGlobalOpenEntryId(open.entryId)
         return
       }
+
+      const current = await ensureEntry()
+      const currentPunches = getPunches(current)
       await updateDoc(doc(db, 'timeEntries', docId), {
-        clockIn: serverTimestamp(),
+        punches: punchesToFirestore([
+          ...currentPunches,
+          { clockIn: Timestamp.now(), clockOut: null },
+        ]),
+        clockIn: null,
+        clockOut: null,
         punchSource: 'button',
         updatedAt: serverTimestamp(),
       })
-      const updated = await getDoc(doc(db, 'timeEntries', docId))
-      setEntry({ id: docId, ...updated.data() } as TimeEntry)
+      await loadEntry()
     } catch {
       setError('Failed to clock in.')
     } finally {
@@ -109,17 +144,28 @@ export function TimesheetPage() {
     setBusy(true)
     setError('')
     try {
-      if (!entry?.clockIn) {
-        setError('Must clock in first.')
+      const entries = await fetchEmployeeEntries(employeeId)
+      const open = findGlobalOpenPunch(entries)
+      if (!open) {
+        setError('No open clock-in session found.')
+        setGlobalOpenEntryId(null)
         return
       }
-      await updateDoc(doc(db, 'timeEntries', docId), {
-        clockOut: serverTimestamp(),
+
+      const punches = [...getPunches(open.entry)]
+      punches[open.punchIndex] = {
+        ...punches[open.punchIndex],
+        clockOut: Timestamp.now(),
+      }
+
+      await updateDoc(doc(db, 'timeEntries', open.entryId), {
+        punches: punchesToFirestore(punches),
+        clockIn: null,
+        clockOut: null,
         punchSource: 'button',
         updatedAt: serverTimestamp(),
       })
-      const updated = await getDoc(doc(db, 'timeEntries', docId))
-      setEntry({ id: docId, ...updated.data() } as TimeEntry)
+      await loadEntry()
     } catch {
       setError('Failed to clock out.')
     } finally {
@@ -128,19 +174,42 @@ export function TimesheetPage() {
   }
 
   const handleSubmit = async () => {
-    if (!entry?.clockIn || !entry?.clockOut) {
-      setError('Complete clock in and out before submitting.')
+    if (!normalizedEntry || !canSubmitEntry(normalizedEntry)) {
+      setError('Complete all sessions before submitting.')
       return
     }
     setBusy(true)
-    await updateDoc(doc(db, 'timeEntries', docId), {
-      status: 'submitted',
-      submittedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    })
-    const updated = await getDoc(doc(db, 'timeEntries', docId))
-    setEntry({ id: docId, ...updated.data() } as TimeEntry)
-    setBusy(false)
+    setError('')
+    try {
+      await updateDoc(doc(db, 'timeEntries', docId), {
+        status: 'submitted',
+        submittedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+      await loadEntry()
+    } catch {
+      setError('Failed to submit entry.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const openManualEdit = () => {
+    setEditRows(punchesToEditRows(normalizedEntry ?? { id: docId, employeeId, employeeName: '', workDate, status: 'draft' }))
+    setEditReason('')
+    setShowEdit(true)
+  }
+
+  const updateEditRow = (index: number, field: 'clockIn' | 'clockOut', value: string) => {
+    setEditRows((rows) => rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)))
+  }
+
+  const addEditRow = () => {
+    setEditRows((rows) => [...rows, { clockIn: '', clockOut: '' }])
+  }
+
+  const removeEditRow = (index: number) => {
+    setEditRows((rows) => (rows.length <= 1 ? rows : rows.filter((_, i) => i !== index)))
   }
 
   const handleManualEdit = async () => {
@@ -148,37 +217,35 @@ export function TimesheetPage() {
       setError('Edit reason must be at least 10 characters.')
       return
     }
-    const inDate = inputValueToDate(editIn)
-    const outDate = inputValueToDate(editOut)
-    if (!inDate || !outDate || outDate <= inDate) {
-      setError('Valid clock in and out times are required.')
+    const parsed = parseEditRows(editRows)
+    if (!parsed.ok) {
+      setError(parsed.error)
       return
     }
     setBusy(true)
     setError('')
     try {
       await ensureEntry()
+      const previousPunches = getPunches(normalizedEntry)
       const historyEntry = {
         editedAt: Timestamp.now(),
         editedBy: user!.uid,
         editedByName: profile!.displayName,
         reason: editReason.trim(),
-        previousClockIn: entry?.clockIn ? timestampToInputValue(entry.clockIn) : null,
-        previousClockOut: entry?.clockOut ? timestampToInputValue(entry.clockOut) : null,
-        newClockIn: editIn,
-        newClockOut: editOut,
+        previousPunches: serializePunchesForHistory(previousPunches),
+        newPunches: serializePunchesForHistory(parsed.punches),
       }
       await updateDoc(doc(db, 'timeEntries', docId), {
-        clockIn: Timestamp.fromDate(inDate),
-        clockOut: Timestamp.fromDate(outDate),
+        punches: punchesToFirestore(parsed.punches),
+        clockIn: null,
+        clockOut: null,
         punchSource: 'manual_edit',
         editHistory: [...(entry?.editHistory ?? []), historyEntry],
         updatedAt: serverTimestamp(),
       })
-      const updated = await getDoc(doc(db, 'timeEntries', docId))
-      setEntry({ id: docId, ...updated.data() } as TimeEntry)
       setShowEdit(false)
       setEditReason('')
+      await loadEntry()
     } catch {
       setError('Failed to save edit.')
     } finally {
@@ -187,9 +254,6 @@ export function TimesheetPage() {
   }
 
   if (loading) return <LoadingSpinner />
-
-  const showClockIn = !entry?.clockIn
-  const showClockOut = entry?.clockIn && !entry?.clockOut
 
   return (
     <div>
@@ -217,23 +281,41 @@ export function TimesheetPage() {
           </div>
         )}
 
-        <div className="card space-y-4">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-slate-500">Clock In</p>
-              <p className="font-semibold text-lg">{formatTime(entry?.clockIn)}</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Clock Out</p>
-              <p className="font-semibold text-lg">{formatTime(entry?.clockOut)}</p>
-            </div>
-            <div className="col-span-2">
-              <p className="text-slate-500">Hours</p>
-              <p className="font-semibold text-lg">
-                {formatDuration(entry?.clockIn, entry?.clockOut)}
-              </p>
-            </div>
+        {hasGlobalOpen && globalOpenEntryId !== docId && (
+          <div role="status" className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            You have an open session on another date. Use Clock Out to close it before starting a new session.
           </div>
+        )}
+
+        <div className="card space-y-4">
+          {punches.length === 0 ? (
+            <p className="text-sm text-slate-600">No time recorded for this date yet.</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                <span>Sessions</span>
+                <span>Duration</span>
+              </div>
+              {punches.map((punch, index) => (
+                <div key={index} className="flex items-center justify-between text-sm">
+                  <div>
+                    <span className="font-medium">{formatTime(punch.clockIn)}</span>
+                    <span className="text-slate-400"> – </span>
+                    <span className="font-medium">
+                      {punch.clockOut ? formatTime(punch.clockOut) : 'Open'}
+                    </span>
+                  </div>
+                  <span className="font-semibold text-slate-800">{formatPunchDuration(punch)}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between border-t border-slate-200 pt-3">
+                <span className="text-sm font-medium text-slate-600">Daily total</span>
+                <span className="text-lg font-bold text-brand-700">
+                  {normalizedEntry ? formatEntryDuration(normalizedEntry) : '—'}
+                </span>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -250,17 +332,17 @@ export function TimesheetPage() {
               )}
               {showClockOut && (
                 <button type="button" onClick={handleClockOut} disabled={busy} className="btn-primary">
-                  Clock Out
+                  Clock Out{openOnThisDay ? '' : ' (open session)'}
                 </button>
               )}
-              {entry?.clockIn && entry?.clockOut && entry.status === 'draft' && (
+              {normalizedEntry && canSubmitEntry(normalizedEntry) && entry?.status === 'draft' && (
                 <button type="button" onClick={handleSubmit} disabled={busy} className="btn-secondary">
                   Submit for Review
                 </button>
               )}
               <button
                 type="button"
-                onClick={() => setShowEdit(!showEdit)}
+                onClick={() => (showEdit ? setShowEdit(false) : openManualEdit())}
                 disabled={busy}
                 className="btn-secondary"
               >
@@ -273,26 +355,46 @@ export function TimesheetPage() {
         {showEdit && !readOnly && (
           <div className="card space-y-4">
             <h2 className="font-semibold">Manual time edit</h2>
-            <div>
-              <label htmlFor="edit-in" className="label-field">Clock in</label>
-              <input
-                id="edit-in"
-                type="datetime-local"
-                className="input-field"
-                value={editIn}
-                onChange={(e) => setEditIn(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="edit-out" className="label-field">Clock out</label>
-              <input
-                id="edit-out"
-                type="datetime-local"
-                className="input-field"
-                value={editOut}
-                onChange={(e) => setEditOut(e.target.value)}
-              />
-            </div>
+            <p className="text-sm text-slate-600">Edit all sessions for this day.</p>
+            {editRows.map((row, index) => (
+              <div key={index} className="space-y-3 rounded-lg border border-slate-200 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-700">Session {index + 1}</span>
+                  {editRows.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeEditRow(index)}
+                      className="text-xs text-red-600 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor={`edit-in-${index}`} className="label-field">Clock in</label>
+                  <input
+                    id={`edit-in-${index}`}
+                    type="datetime-local"
+                    className="input-field"
+                    value={row.clockIn}
+                    onChange={(e) => updateEditRow(index, 'clockIn', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor={`edit-out-${index}`} className="label-field">Clock out</label>
+                  <input
+                    id={`edit-out-${index}`}
+                    type="datetime-local"
+                    className="input-field"
+                    value={row.clockOut}
+                    onChange={(e) => updateEditRow(index, 'clockOut', e.target.value)}
+                  />
+                </div>
+              </div>
+            ))}
+            <button type="button" onClick={addEditRow} className="btn-secondary text-sm">
+              Add session
+            </button>
             <div>
               <label htmlFor="edit-reason" className="label-field">
                 Reason for edit (min 10 characters)

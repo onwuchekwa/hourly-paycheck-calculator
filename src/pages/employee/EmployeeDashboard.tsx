@@ -4,6 +4,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { PaySlip } from '../../lib/types'
+import { autoCloseStalePunches } from '../../lib/timeEntries'
 import { formatCurrency } from '../../lib/utils'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
@@ -17,6 +18,8 @@ export function EmployeeDashboard() {
   useEffect(() => {
     if (!profile) return
     const load = async () => {
+      await autoCloseStalePunches(profile.uid)
+
       const year = new Date().getFullYear().toString()
       const slipsQ = query(
         collection(db, 'paySlips'),

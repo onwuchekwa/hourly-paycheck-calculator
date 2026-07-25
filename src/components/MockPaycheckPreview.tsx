@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import type { MockPaycheckPreview } from '../lib/types'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
 import { StatusBadge } from './StatusBadge'
@@ -11,7 +10,7 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
   return (
     <div className="card max-w-2xl">
       <div className="border-b border-slate-200 pb-4 mb-4">
-        <h2 className="text-xl font-bold text-slate-900">Mock Paycheck Estimate</h2>
+        <h2 className="text-xl font-bold text-slate-900">Estimated Payroll</h2>
         <p className="mt-1 text-sm text-slate-600">
           {formatDisplayDate(preview.payPeriodStart)} – {formatDisplayDate(preview.payPeriodEnd)}
         </p>
@@ -21,18 +20,6 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
         Estimate only. Only approved time is included in actual payroll. Draft, submitted, or rejected
         hours may change or be excluded.
       </div>
-
-      {preview.existingPaySlipId && (
-        <p className="mb-4 text-sm text-slate-600">
-          A finalized pay slip exists for this period.{' '}
-          <Link
-            to={`/employee/pay-slips/${preview.existingPaySlipId}`}
-            className="font-medium text-brand-600 hover:underline"
-          >
-            View official pay slip
-          </Link>
-        </p>
-      )}
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-6">
         <div>

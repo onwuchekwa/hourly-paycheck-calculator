@@ -12,6 +12,15 @@ function generateTempPassword(): string {
   return randomBytes(12).toString('base64url').slice(0, 16)
 }
 
+/** Removes CR/LF and trims; guards against header/log injection from form input. */
+function sanitizeLine(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').trim()
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const MAX_HOURLY_RATE = 10000
+
 function mapAuthError(err: unknown): never {
   const code = (err as { code?: string })?.code
   if (code === 'auth/email-already-exists') {
@@ -29,15 +38,28 @@ employeesRouter.post('/', requireAuth, async (req, res, next) => {
     await assertAdmin(uid)
 
     const { displayName, email, hourlyRate, effectiveFrom } = req.body as {
-      displayName?: string
-      email?: string
-      hourlyRate?: number
-      effectiveFrom?: string
+      displayName?: unknown
+      email?: unknown
+      hourlyRate?: unknown
+      effectiveFrom?: unknown
     }
 
-    const normalizedEmail = email?.trim().toLowerCase()
-    if (!displayName?.trim() || !normalizedEmail || typeof hourlyRate !== 'number' || hourlyRate <= 0) {
+    const normalizedName = typeof displayName === 'string' ? sanitizeLine(displayName) : ''
+    const normalizedEmail = typeof email === 'string' ? sanitizeLine(email).toLowerCase() : ''
+    if (!normalizedName || !normalizedEmail || typeof hourlyRate !== 'number') {
       throw ApiError.invalidArgument('displayName, email, and hourlyRate are required.')
+    }
+    if (normalizedName.length > 100) {
+      throw ApiError.invalidArgument('Name must be 100 characters or fewer.')
+    }
+    if (normalizedEmail.length > 254 || !EMAIL_PATTERN.test(normalizedEmail)) {
+      throw ApiError.invalidArgument('Please enter a valid email address.')
+    }
+    if (!Number.isFinite(hourlyRate) || hourlyRate <= 0 || hourlyRate > MAX_HOURLY_RATE) {
+      throw ApiError.invalidArgument(`Hourly rate must be between 0 and ${MAX_HOURLY_RATE}.`)
+    }
+    if (effectiveFrom !== undefined && (typeof effectiveFrom !== 'string' || !DATE_PATTERN.test(effectiveFrom))) {
+      throw ApiError.invalidArgument('effectiveFrom must be a YYYY-MM-DD date.')
     }
 
     const tempPassword = generateTempPassword()
@@ -52,7 +74,7 @@ employeesRouter.post('/', requireAuth, async (req, res, next) => {
       userRecord = await auth.createUser({
         email: normalizedEmail,
         password: tempPassword,
-        displayName: displayName.trim(),
+        displayName: normalizedName,
         emailVerified: false,
       })
     } catch (err) {
@@ -64,7 +86,7 @@ employeesRouter.post('/', requireAuth, async (req, res, next) => {
       const userRef = db.collection('users').doc(userRecord!.uid)
       batch.set(userRef, {
         email: normalizedEmail,
-        displayName: displayName.trim(),
+        displayName: normalizedName,
         role: 'employee',
         mustChangePassword: true,
         currentHourlyRate: hourlyRate,
@@ -78,7 +100,7 @@ employeesRouter.post('/', requireAuth, async (req, res, next) => {
       const rateRef = db.collection('employeeRates').doc()
       batch.set(rateRef, {
         employeeId: userRecord!.uid,
-        employeeName: displayName.trim(),
+        employeeName: normalizedName,
         hourlyRate,
         effectiveFrom: startDate,
         createdAt: FieldValue.serverTimestamp(),
@@ -88,7 +110,7 @@ employeesRouter.post('/', requireAuth, async (req, res, next) => {
       await batch.commit()
 
       const welcomeMessage = buildWelcomeEmail({
-        displayName: displayName.trim(),
+        displayName: normalizedName,
         email: normalizedEmail,
         tempPassword,
         signInUrl,
@@ -113,8 +135,9 @@ employeesRouter.post('/', requireAuth, async (req, res, next) => {
     } catch (err) {
       await auth.deleteUser(userRecord!.uid).catch(() => undefined)
       if (err instanceof ApiError) throw err
-      const message = err instanceof Error ? err.message : 'Failed to create employee.'
-      throw ApiError.internal(message)
+      // Log the details server-side; never echo internal errors to the client.
+      console.error('Employee creation failed:', err)
+      throw ApiError.internal('Failed to create employee. Please try again.')
     }
   } catch (err) {
     next(err)

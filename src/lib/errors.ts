@@ -43,6 +43,23 @@ export function getCallableErrorMessage(err: unknown, fallback = 'Something went
   return fallback
 }
 
+export function getPasswordChangeErrorMessage(err: unknown): string {
+  if (err instanceof FirebaseError) {
+    switch (err.code) {
+      case 'auth/invalid-credential':
+      case 'auth/wrong-password':
+        return 'Current password is incorrect.'
+      case 'auth/weak-password':
+        return 'New password is too weak. Choose a longer, less common password.'
+      case 'auth/too-many-requests':
+        return 'Too many attempts. Please wait a moment and try again.'
+      default:
+        return 'Unable to change password. Please try again.'
+    }
+  }
+  return 'Unable to change password. Please try again.'
+}
+
 export function getAuthErrorMessage(err: unknown): string {
   if (err instanceof FirebaseError) {
     switch (err.code) {

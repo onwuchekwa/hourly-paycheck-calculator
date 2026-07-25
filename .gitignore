@@ -13,12 +13,22 @@ dist-ssr
 *.local
 .env
 server/.env
+functions/.env
+
+# Credentials — never commit these
+*serviceAccount*.json
+*service-account*.json
+*.pem
+*.key
+*.p12
 
 # Firebase
 functions/lib
 server/node_modules
 server/dist
 .firebase-emulator-data
+firestore-debug.log
+firebase-debug.log
 
 # Editor directories and files
 .vscode/*

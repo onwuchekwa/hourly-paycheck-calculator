@@ -3,9 +3,11 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { adminHomePath } from '../lib/roles'
+import { getPasswordChangeErrorMessage } from '../lib/errors'
 
 export function ChangePasswordPage() {
   const { user, profile, loading, changePassword } = useAuth()
+  const [currentPassword, setCurrentPassword] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
@@ -24,8 +26,16 @@ export function ChangePasswordPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
+    if (!currentPassword) {
+      setError('Enter your current (temporary) password.')
+      return
+    }
     if (password.length < 8) {
       setError('Password must be at least 8 characters.')
+      return
+    }
+    if (password === currentPassword) {
+      setError('New password must be different from your current password.')
       return
     }
     if (password !== confirm) {
@@ -34,10 +44,10 @@ export function ChangePasswordPage() {
     }
     setSubmitting(true)
     try {
-      await changePassword(password)
+      await changePassword(currentPassword, password)
       setDone(true)
-    } catch {
-      setError('Unable to change password. Please sign in again and retry.')
+    } catch (err) {
+      setError(getPasswordChangeErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -59,6 +69,18 @@ export function ChangePasswordPage() {
               {error}
             </div>
           )}
+          <div>
+            <label htmlFor="current-password" className="label-field">Current (temporary) password</label>
+            <input
+              id="current-password"
+              type="password"
+              autoComplete="current-password"
+              required
+              className="input-field"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+            />
+          </div>
           <div>
             <label htmlFor="password" className="label-field">New password</label>
             <input

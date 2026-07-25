@@ -8,7 +8,9 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  EmailAuthProvider,
   onAuthStateChanged,
+  reauthenticateWithCredential,
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
@@ -24,7 +26,7 @@ interface AuthContextValue {
   loading: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
-  changePassword: (newPassword: string) => Promise<void>
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
   refreshProfile: () => Promise<void>
 }
 
@@ -69,15 +71,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(auth)
   }, [])
 
-  const changePassword = useCallback(async (newPassword: string) => {
-    if (!auth.currentUser) throw new Error('Not authenticated')
-    await updatePassword(auth.currentUser, newPassword)
-    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-      mustChangePassword: false,
-      updatedAt: serverTimestamp(),
-    })
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    const currentUser = auth.currentUser
+    if (!currentUser?.email) throw new Error('Not authenticated')
+    // Proving the current password blocks silent takeover from a hijacked
+    // session and avoids Firebase "requires-recent-login" failures.
+    const credential = EmailAuthProvider.credential(currentUser.email, currentPassword)
+    await reauthenticateWithCredential(currentUser, credential)
+    await updatePassword(currentUser, newPassword)
+    if (profile?.mustChangePassword) {
+      // Rules only permit this transition while the flag is true.
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        mustChangePassword: false,
+        updatedAt: serverTimestamp(),
+      })
+    }
     await refreshProfile()
-  }, [refreshProfile])
+  }, [profile, refreshProfile])
 
   const value = useMemo(
     () => ({ user, profile, loading, login, logout, changePassword, refreshProfile }),

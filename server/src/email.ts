@@ -18,12 +18,18 @@ export function isSmtpConfigured(): boolean {
   return Boolean(env('SMTP_HOST') && env('SMTP_USER') && env('SMTP_PASS'))
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/** Strip CR/LF so DB-sourced strings can never inject SMTP headers. */
+function sanitizeHeader(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').trim()
 }
 
 function emailLayout(title: string, bodyHtml: string, footerText: string): string {
@@ -212,9 +218,9 @@ export async function sendMail(params: {
 
   const info = await transporter.sendMail({
     from: env('SMTP_FROM', 'HourlyPay <noreply@hourlypay.app>'),
-    to: params.to,
-    replyTo: params.replyTo,
-    subject: params.message.subject,
+    to: sanitizeHeader(params.to),
+    replyTo: params.replyTo ? sanitizeHeader(params.replyTo) : undefined,
+    subject: sanitizeHeader(params.message.subject),
     text: params.message.text,
     html: params.message.html,
   })

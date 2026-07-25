@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { updatePassword } from 'firebase/auth'
-import { auth } from '../../lib/firebase'
 import { useAuth } from '../../contexts/AuthContext'
+import { getPasswordChangeErrorMessage } from '../../lib/errors'
 
 export function AccountSettingsPage() {
-  const { profile } = useAuth()
+  const { profile, changePassword } = useAuth()
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [message, setMessage] = useState('')
@@ -16,8 +16,16 @@ export function AccountSettingsPage() {
     e.preventDefault()
     setError('')
     setMessage('')
+    if (!currentPassword) {
+      setError('Enter your current password.')
+      return
+    }
     if (newPassword.length < 8) {
       setError('New password must be at least 8 characters.')
+      return
+    }
+    if (newPassword === currentPassword) {
+      setError('New password must be different from your current password.')
       return
     }
     if (newPassword !== confirm) {
@@ -26,14 +34,13 @@ export function AccountSettingsPage() {
     }
     setSubmitting(true)
     try {
-      if (auth.currentUser) {
-        await updatePassword(auth.currentUser, newPassword)
-        setMessage('Password updated successfully.')
-        setNewPassword('')
-        setConfirm('')
-      }
-    } catch {
-      setError('Unable to update password. You may need to sign in again.')
+      await changePassword(currentPassword, newPassword)
+      setMessage('Password updated successfully.')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirm('')
+    } catch (err) {
+      setError(getPasswordChangeErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -76,6 +83,18 @@ export function AccountSettingsPage() {
                 {message}
               </div>
             )}
+            <div>
+              <label htmlFor="current-pw" className="label-field">Current password</label>
+              <input
+                id="current-pw"
+                type="password"
+                autoComplete="current-password"
+                className="input-field"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+              />
+            </div>
             <div>
               <label htmlFor="new-pw" className="label-field">New password</label>
               <input

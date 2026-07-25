@@ -2,9 +2,6 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model — prototype rules; review before production
-    // ===============================================================
 
     function isSignedIn() {
       return request.auth != null;
@@ -14,12 +11,22 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
+    // Deactivated accounts keep Firebase Auth access until removed, so rules
+    // must deny them. Older docs without an `active` field are treated as active.
+    function isActiveUser() {
+      return userDoc().data.get('active', true) != false;
+    }
+
     function isAdmin() {
-      return isSignedIn() && (userDoc().data.role == 'admin' || userDoc().data.role == 'employer');
+      return isSignedIn()
+        && (userDoc().data.role == 'admin' || userDoc().data.role == 'employer')
+        && isActiveUser();
     }
 
     function isEmployee() {
-      return isSignedIn() && userDoc().data.role == 'employee';
+      return isSignedIn()
+        && userDoc().data.role == 'employee'
+        && isActiveUser();
     }
 
     function isOwner(uid) {
@@ -27,7 +34,7 @@ service cloud.firestore {
     }
 
     function validEditReason(reason) {
-      return reason is string && reason.size() >= 10;
+      return reason is string && reason.size() >= 10 && reason.size() <= 500;
     }
 
     function isOwnTimeEntryId(entryId) {
@@ -79,6 +86,45 @@ service cloud.firestore {
         );
     }
 
+    // Employees may only touch clock/punch data, submission fields, and edit
+    // history. Notably absent: employeeId, workDate, employeeName, and any
+    // admin review fields (approvedAt, reviewedBy, ...).
+    function employeeEntryUpdate() {
+      return isEmployee()
+        && resource.data.employeeId == request.auth.uid
+        && resource.data.status in ['draft', 'submitted', 'rejected']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'punches',
+          'clockIn',
+          'clockOut',
+          'punchSource',
+          'editHistory',
+          'status',
+          'submittedAt',
+          'rejectionReason',
+          'rejectedAt',
+          'updatedAt',
+        ])
+        // Employees can never set 'approved'; 'rejected' only persists if the
+        // entry was already rejected (editing punches without a status change).
+        && (
+          request.resource.data.status == resource.data.status
+          || request.resource.data.status in ['draft', 'submitted']
+        )
+        && request.resource.data.punches is list
+        && validEditHistoryChange();
+    }
+
+    // Any change to editHistory must append an entry with a meaningful reason.
+    function validEditHistoryChange() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['editHistory'])
+        || (
+          request.resource.data.editHistory is list
+          && request.resource.data.editHistory.size() > resource.data.get('editHistory', []).size()
+          && validEditReason(request.resource.data.editHistory[request.resource.data.editHistory.size() - 1].reason)
+        );
+    }
+
     match /timeEntries/{entryId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
@@ -87,17 +133,23 @@ service cloud.firestore {
           resource.data.employeeId == request.auth.uid
         ))
       );
-      allow create: if isSignedIn() && (
-        isEmployee() && request.resource.data.employeeId == request.auth.uid
-      );
-      allow update: if isSignedIn() && (
-        adminReviewUpdate() ||
-        (
-          isEmployee() &&
-          resource.data.employeeId == request.auth.uid &&
-          resource.data.status in ['draft', 'submitted', 'rejected']
-        )
-      );
+      allow create: if isEmployee()
+        && request.resource.data.employeeId == request.auth.uid
+        && request.resource.data.status == 'draft'
+        && request.resource.data.workDate is string
+        && request.resource.data.workDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        // Doc ID must encode the owner and work date: {uid}_{workDate}.
+        && entryId == request.auth.uid + '_' + request.resource.data.workDate
+        && request.resource.data.punches is list
+        && request.resource.data.keys().hasOnly([
+          'employeeId',
+          'employeeName',
+          'workDate',
+          'status',
+          'punches',
+          'updatedAt',
+        ]);
+      allow update: if adminReviewUpdate() || employeeEntryUpdate();
       allow delete: if (
         isEmployee() &&
         resource.data.employeeId == request.auth.uid &&
@@ -106,13 +158,14 @@ service cloud.firestore {
     }
 
     match /employeeRates/{rateId} {
-      allow read: if isSignedIn();
+      // Rates are sensitive: admins see all, employees only their own.
+      allow read: if isAdmin() || (isEmployee() && resource.data.employeeId == request.auth.uid);
       allow create: if isAdmin();
       allow update, delete: if false;
     }
 
     match /payPeriods/{periodId} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin() || isEmployee();
       allow write: if isAdmin();
     }
 
@@ -135,6 +188,8 @@ service cloud.firestore {
     }
 
     match /settings/{docId} {
+      // The company doc is intentionally public: login/home pages show
+      // company branding before sign-in. Do not store secrets in it.
       allow read: if isSignedIn() || docId == 'company';
       allow write: if isAdmin();
     }

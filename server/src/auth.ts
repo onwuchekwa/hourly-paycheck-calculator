@@ -25,8 +25,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
 export async function assertAdmin(uid: string): Promise<void> {
   const userDoc = await getDb().collection('users').doc(uid).get()
-  const role = userDoc.data()?.role
-  if (!userDoc.exists || (role !== 'admin' && role !== 'employer')) {
+  const data = userDoc.data()
+  const role = data?.role
+  if (!userDoc.exists || (role !== 'admin' && role !== 'employer') || data?.active === false) {
     throw ApiError.permissionDenied()
   }
 }

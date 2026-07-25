@@ -2,9 +2,23 @@ import { Router } from 'express'
 import { assertAdmin, getCompanySettings, requireAuth, type AuthedRequest } from '../auth.js'
 import { getDb } from '../admin.js'
 import { ApiError } from '../errors.js'
-import { buildPaySlipEmail, getAppSignInUrl, sendMail } from '../email.js'
+import { buildPaySlipEmail, escapeHtml, getAppSignInUrl, sendMail } from '../email.js'
 
 export const emailRouter = Router()
+
+const MAX_BATCH_SLIPS = 500
+
+function requireDocId(value: unknown, name: string): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 256 || value.includes('/')) {
+    throw ApiError.invalidArgument(`${name} is required.`)
+  }
+  return value
+}
+
+function toMoney(value: unknown): string {
+  const n = Number(value)
+  return Number.isFinite(n) ? n.toFixed(2) : '0.00'
+}
 
 async function buildPaySlipMail(slipId: string) {
   const slipDoc = await getDb().collection('paySlips').doc(slipId).get()
@@ -18,12 +32,12 @@ async function buildPaySlipMail(slipId: string) {
 
   const lineRows = (slip.lineItems ?? [])
     .map(
-      (l: { workDate: string; hours: number; rate: number; amount: number }) =>
+      (l: { workDate?: unknown; hours?: unknown; rate?: unknown; amount?: unknown }) =>
         `<tr>
-          <td style="padding:8px;border-top:1px solid #e2e8f0;color:#334155;">${l.workDate}</td>
-          <td align="right" style="padding:8px;border-top:1px solid #e2e8f0;color:#334155;">${l.hours.toFixed(2)}</td>
-          <td align="right" style="padding:8px;border-top:1px solid #e2e8f0;color:#334155;">$${l.rate.toFixed(2)}</td>
-          <td align="right" style="padding:8px;border-top:1px solid #e2e8f0;color:#334155;">$${l.amount.toFixed(2)}</td>
+          <td style="padding:8px;border-top:1px solid #e2e8f0;color:#334155;">${escapeHtml(String(l.workDate ?? ''))}</td>
+          <td align="right" style="padding:8px;border-top:1px solid #e2e8f0;color:#334155;">${toMoney(l.hours)}</td>
+          <td align="right" style="padding:8px;border-top:1px solid #e2e8f0;color:#334155;">$${toMoney(l.rate)}</td>
+          <td align="right" style="padding:8px;border-top:1px solid #e2e8f0;color:#334155;">$${toMoney(l.amount)}</td>
         </tr>`,
     )
     .join('')
@@ -52,10 +66,7 @@ emailRouter.post('/payslip', requireAuth, async (req, res, next) => {
     const { uid } = req as AuthedRequest
     await assertAdmin(uid)
 
-    const { paySlipId } = req.body as { paySlipId?: string }
-    if (!paySlipId) {
-      throw ApiError.invalidArgument('paySlipId is required.')
-    }
+    const paySlipId = requireDocId((req.body as { paySlipId?: unknown }).paySlipId, 'paySlipId')
 
     const mailPayload = await buildPaySlipMail(paySlipId)
     if (!mailPayload.to) {
@@ -74,14 +85,12 @@ emailRouter.post('/payslip-batch', requireAuth, async (req, res, next) => {
     const { uid } = req as AuthedRequest
     await assertAdmin(uid)
 
-    const { payrollRunId } = req.body as { payrollRunId?: string }
-    if (!payrollRunId) {
-      throw ApiError.invalidArgument('payrollRunId is required.')
-    }
+    const payrollRunId = requireDocId((req.body as { payrollRunId?: unknown }).payrollRunId, 'payrollRunId')
 
     const slipsSnap = await getDb()
       .collection('paySlips')
       .where('payrollRunId', '==', payrollRunId)
+      .limit(MAX_BATCH_SLIPS)
       .get()
 
     if (slipsSnap.empty) {

@@ -13,6 +13,7 @@ const employeeNav: NavItem[] = [
   { to: '/employee/timesheet', label: 'Timesheet' },
   { to: '/employee/history', label: 'Time History' },
   { to: '/employee/pay-slips', label: 'Pay Slips' },
+  { to: '/employee/mock-paycheck', label: 'Earnings Preview' },
   { to: '/employee/settings', label: 'Account' },
 ]
 

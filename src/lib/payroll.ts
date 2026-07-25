@@ -1,4 +1,12 @@
-import type { PaySlipDayLine, PayrollLineItem, PayrollRun, TimeEntry, EmployeeRate } from './types'
+import type {
+  MockPaycheckDayLine,
+  MockPaycheckPreview,
+  PaySlipDayLine,
+  PayrollLineItem,
+  PayrollRun,
+  TimeEntry,
+  EmployeeRate,
+} from './types'
 import { calcEntryHours, hasCompletedPunch, normalizeEntry } from './timeEntries'
 import { formatDate } from './utils'
 import { getRateForDate } from './rates'
@@ -53,6 +61,50 @@ export function buildPayrollSnapshot(
     if (line) lines.push(line)
   }
   return lines.sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+}
+
+export function buildMockPaycheckForEmployee(
+  employeeId: string,
+  employeeName: string,
+  payPeriodId: string,
+  payPeriodStart: string,
+  payPeriodEnd: string,
+  entries: TimeEntry[],
+  rates: EmployeeRate[],
+): MockPaycheckPreview | null {
+  const completed = entries.filter(
+    (e) => e.employeeId === employeeId && hasCompletedPunch(normalizeEntry(e)),
+  )
+  if (completed.length === 0) return null
+
+  const dayBreakdown: MockPaycheckDayLine[] = completed.map((e) => {
+    const normalized = normalizeEntry(e)
+    const hours = calcEntryHours(normalized)
+    const rate = getRateForDate(rates, e.workDate)
+    return {
+      workDate: e.workDate,
+      hours,
+      rate,
+      amount: Math.round(hours * rate * 100) / 100,
+      status: e.status,
+    }
+  })
+
+  const totalHours = dayBreakdown.reduce((s, d) => s + d.hours, 0)
+  const grossPay = dayBreakdown.reduce((s, d) => s + d.amount, 0)
+  const avgRate = totalHours > 0 ? grossPay / totalHours : getRateForDate(rates, formatDate(new Date()))
+
+  return {
+    payPeriodId,
+    payPeriodStart,
+    payPeriodEnd,
+    employeeId,
+    employeeName,
+    totalHours: Math.round(totalHours * 100) / 100,
+    grossPay: Math.round(grossPay * 100) / 100,
+    hourlyRate: Math.round(avgRate * 100) / 100,
+    dayBreakdown: dayBreakdown.sort((a, b) => a.workDate.localeCompare(b.workDate)),
+  }
 }
 
 export function collectPaidTimeEntryIdsForPeriod(

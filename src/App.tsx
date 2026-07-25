@@ -10,6 +10,7 @@ import { TimesheetPage } from './pages/employee/TimesheetPage'
 import { TimeHistoryPage } from './pages/employee/TimeHistoryPage'
 import { PaySlipsPage } from './pages/employee/PaySlipsPage'
 import { PaySlipDetailPage } from './pages/employee/PaySlipDetailPage'
+import { MockPaycheckPage } from './pages/employee/MockPaycheckPage'
 import { AccountSettingsPage } from './pages/employee/AccountSettingsPage'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
 import { EmployeesPage } from './pages/admin/EmployeesPage'
@@ -36,6 +37,7 @@ function App() {
               <Route path="/employee/history" element={<TimeHistoryPage />} />
               <Route path="/employee/pay-slips" element={<PaySlipsPage />} />
               <Route path="/employee/pay-slips/:id" element={<PaySlipDetailPage />} />
+              <Route path="/employee/mock-paycheck" element={<MockPaycheckPage />} />
               <Route path="/employee/settings" element={<AccountSettingsPage />} />
             </Route>
           </Route>

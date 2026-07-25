@@ -72,6 +72,7 @@ export function EmployeeDashboard() {
 
       <div className="mt-8 flex flex-wrap gap-3">
         <Link to="/employee/timesheet" className="btn-primary">Go to Timesheet</Link>
+        <Link to="/employee/mock-paycheck" className="btn-secondary">Preview Earnings</Link>
         <Link to="/employee/pay-slips" className="btn-secondary">View Pay Slips</Link>
       </div>
 

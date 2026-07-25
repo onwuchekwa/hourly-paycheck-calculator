@@ -118,6 +118,23 @@ export interface PaySlipDayLine {
   amount: number
 }
 
+export interface MockPaycheckDayLine extends PaySlipDayLine {
+  status: TimeEntryStatus
+}
+
+export interface MockPaycheckPreview {
+  payPeriodId: string
+  payPeriodStart: string
+  payPeriodEnd: string
+  employeeId: string
+  employeeName: string
+  totalHours: number
+  grossPay: number
+  hourlyRate: number
+  dayBreakdown: MockPaycheckDayLine[]
+  existingPaySlipId?: string
+}
+
 export interface PaySlip {
   id: string
   paySlipNumber: string

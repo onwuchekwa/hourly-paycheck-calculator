@@ -3,11 +3,7 @@ import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { MockPaycheckPreview, PayPeriod, PaySlip, TimeEntry } from '../../lib/types'
-import {
-  buildMockPaycheckForEmployee,
-  filterPaySlipToDateRange,
-  paySlipOverlapsRange,
-} from '../../lib/payroll'
+import { buildMockPaycheckForEmployee } from '../../lib/payroll'
 import { getEmployeeRates } from '../../lib/rates'
 import { formatDate, todayString } from '../../lib/utils'
 import { DatePicker } from '../../components/DatePicker'
@@ -25,12 +21,13 @@ function defaultStartDate(): string {
 export function MockPaycheckPage() {
   const { profile } = useAuth()
   const [periods, setPeriods] = useState<PayPeriod[]>([])
-  const [periodPresetId, setPeriodPresetId] = useState('')
+  const [selectedPeriodId, setSelectedPeriodId] = useState('')
   const [viewMode, setViewMode] = useState<EarningsViewMode>('estimated')
   const [startDate, setStartDate] = useState(defaultStartDate())
   const [endDate, setEndDate] = useState(todayString())
   const [preview, setPreview] = useState<MockPaycheckPreview | null>(null)
   const [officialSlips, setOfficialSlips] = useState<PaySlip[]>([])
+  const [officialPeriod, setOfficialPeriod] = useState<PayPeriod | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -45,51 +42,39 @@ export function MockPaycheckPage() {
       setPeriods(list)
 
       const openPeriod = list.find((p) => p.status === 'open')
-      if (openPeriod) {
-        setPeriodPresetId(openPeriod.id)
-        setStartDate(openPeriod.startDate)
-        setEndDate(openPeriod.endDate)
-      }
+      setSelectedPeriodId(openPeriod?.id ?? list[0]?.id ?? '')
 
       setLoading(false)
     }
     void loadPeriods()
   }, [])
 
-  const applyPeriodPreset = (periodId: string) => {
-    setPeriodPresetId(periodId)
-    const period = periods.find((p) => p.id === periodId)
-    if (!period) return
-    setStartDate(period.startDate)
-    setEndDate(period.endDate)
+  const clearResults = () => {
     setPreview(null)
     setOfficialSlips([])
+    setOfficialPeriod(null)
     setHasPreviewed(false)
     setError('')
   }
 
-  const validateRange = (): string | null => {
-    if (!startDate || !endDate) return 'Start and end dates are required.'
-    if (startDate > endDate) return 'Start date must be on or before end date.'
-    return null
-  }
-
   const handlePreview = async () => {
     if (!profile) return
-    const rangeError = validateRange()
-    if (rangeError) {
-      setError(rangeError)
-      return
-    }
 
     setBusy(true)
     setError('')
     setPreview(null)
     setOfficialSlips([])
+    setOfficialPeriod(null)
     setHasPreviewed(true)
 
     try {
       if (viewMode === 'official') {
+        const period = periods.find((p) => p.id === selectedPeriodId)
+        if (!period) {
+          setError('Select a pay period.')
+          return
+        }
+
         const slipsSnap = await getDocs(
           query(
             collection(db, 'paySlips'),
@@ -99,16 +84,24 @@ export function MockPaycheckPage() {
         )
         const matchingSlips = slipsSnap.docs
           .map((d) => ({ id: d.id, ...d.data() }) as PaySlip)
-          .filter((slip) => paySlipOverlapsRange(slip, startDate, endDate))
-          .map((slip) => filterPaySlipToDateRange(slip, startDate, endDate))
-          .filter((slip): slip is PaySlip => slip !== null)
+          .filter((slip) => slip.payPeriodId === period.id)
 
         if (matchingSlips.length === 0) {
-          setError('No official pay slips found for this date range. Try estimated payroll instead.')
+          setError('No official pay slip has been issued for this pay period yet.')
           return
         }
 
+        setOfficialPeriod(period)
         setOfficialSlips(matchingSlips)
+        return
+      }
+
+      if (!startDate || !endDate) {
+        setError('Start and end dates are required.')
+        return
+      }
+      if (startDate > endDate) {
+        setError('Start date must be on or before end date.')
         return
       }
 
@@ -147,13 +140,6 @@ export function MockPaycheckPage() {
     }
   }
 
-  const clearResults = () => {
-    setPreview(null)
-    setOfficialSlips([])
-    setHasPreviewed(false)
-    setError('')
-  }
-
   if (loading) return <LoadingSpinner />
 
   const hasResults = viewMode === 'official' ? officialSlips.length > 0 : preview !== null
@@ -162,88 +148,105 @@ export function MockPaycheckPage() {
     <div>
       <h1 className="page-title">Earnings Preview</h1>
       <p className="page-subtitle">
-        View official pay slips or estimate gross pay for any date range.
+        View official pay for a pay period or estimate gross pay for a custom date range.
       </p>
 
       <div className="card mt-8 max-w-lg space-y-5">
         <fieldset className="space-y-2">
           <legend className="label-field">View</legend>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-start gap-2 text-sm text-slate-700">
             <input
               type="radio"
               name="viewMode"
+              className="mt-1"
               checked={viewMode === 'official'}
               onChange={() => {
                 setViewMode('official')
                 clearResults()
               }}
             />
-            Official payroll
+            <span>
+              <span className="font-medium">Official payroll</span>
+              <span className="mt-0.5 block text-slate-500">
+                View finalized pay slips for an official pay period.
+              </span>
+            </span>
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-start gap-2 text-sm text-slate-700">
             <input
               type="radio"
               name="viewMode"
+              className="mt-1"
               checked={viewMode === 'estimated'}
               onChange={() => {
                 setViewMode('estimated')
                 clearResults()
               }}
             />
-            Estimated payroll
+            <span>
+              <span className="font-medium">Estimated payroll</span>
+              <span className="mt-0.5 block text-slate-500">
+                Estimate earnings for any start and end date.
+              </span>
+            </span>
           </label>
         </fieldset>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <DatePicker
-            label="Start date"
-            value={startDate}
-            max={endDate || todayString()}
-            onChange={(value) => {
-              setStartDate(value)
-              setPeriodPresetId('')
-              clearResults()
-            }}
-            required
-          />
-          <DatePicker
-            label="End date"
-            value={endDate}
-            min={startDate}
-            onChange={(value) => {
-              setEndDate(value)
-              setPeriodPresetId('')
-              clearResults()
-            }}
-            required
-          />
-        </div>
-
-        {periods.length > 0 && (
+        {viewMode === 'official' ? (
           <div>
-            <label htmlFor="period-preset" className="label-field">
-              Fill dates from pay period (optional)
-            </label>
+            <label htmlFor="pay-period" className="label-field">Pay period</label>
             <select
-              id="period-preset"
+              id="pay-period"
               className="input-field"
-              value={periodPresetId}
-              onChange={(e) => applyPeriodPreset(e.target.value)}
+              value={selectedPeriodId}
+              onChange={(e) => {
+                setSelectedPeriodId(e.target.value)
+                clearResults()
+              }}
             >
-              <option value="">Custom date range</option>
-              {periods.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.startDate} – {p.endDate} ({p.status})
-                </option>
-              ))}
+              {periods.length === 0 ? (
+                <option value="">No pay periods available</option>
+              ) : (
+                periods.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.startDate} – {p.endDate} ({p.status})
+                  </option>
+                ))
+              )}
             </select>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <DatePicker
+              label="Start date"
+              value={startDate}
+              max={endDate || todayString()}
+              onChange={(value) => {
+                setStartDate(value)
+                clearResults()
+              }}
+              required
+            />
+            <DatePicker
+              label="End date"
+              value={endDate}
+              min={startDate}
+              onChange={(value) => {
+                setEndDate(value)
+                clearResults()
+              }}
+              required
+            />
           </div>
         )}
 
         <button
           type="button"
           onClick={handlePreview}
-          disabled={busy || !startDate || !endDate}
+          disabled={
+            busy ||
+            (viewMode === 'official' ? !selectedPeriodId : !startDate || !endDate)
+          }
           className="btn-primary"
         >
           {busy ? 'Loading…' : viewMode === 'official' ? 'View official payroll' : 'Preview estimate'}
@@ -256,9 +259,9 @@ export function MockPaycheckPage() {
         )}
       </div>
 
-      {viewMode === 'official' && officialSlips.length > 0 && (
+      {viewMode === 'official' && officialPeriod && officialSlips.length > 0 && (
         <div className="mt-8">
-          <OfficialPayrollPreview slips={officialSlips} startDate={startDate} endDate={endDate} />
+          <OfficialPayrollPreview period={officialPeriod} slips={officialSlips} />
         </div>
       )}
 
@@ -269,7 +272,11 @@ export function MockPaycheckPage() {
       )}
 
       {hasPreviewed && !hasResults && !error && !busy && (
-        <p className="mt-8 text-sm text-slate-600">No earnings to show for this date range.</p>
+        <p className="mt-8 text-sm text-slate-600">
+          {viewMode === 'official'
+            ? 'No official pay slip is available for this pay period.'
+            : 'No earnings to show for this date range.'}
+        </p>
       )}
     </div>
   )

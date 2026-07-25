@@ -1,7 +1,6 @@
 import type {
   MockPaycheckDayLine,
   MockPaycheckPreview,
-  PaySlip,
   PaySlipDayLine,
   PayrollLineItem,
   PayrollRun,
@@ -125,27 +124,6 @@ export function collectPaidTimeEntryIdsForPeriod(
 export function excludePaidTimeEntries(entries: TimeEntry[], paidIds: Set<string>): TimeEntry[] {
   if (paidIds.size === 0) return entries
   return entries.filter((entry) => !paidIds.has(entry.id))
-}
-
-export function paySlipOverlapsRange(slip: PaySlip, startDate: string, endDate: string): boolean {
-  return slip.payPeriodStart <= endDate && slip.payPeriodEnd >= startDate
-}
-
-export function filterPaySlipToDateRange(slip: PaySlip, startDate: string, endDate: string): PaySlip | null {
-  const lineItems = slip.lineItems.filter(
-    (line) => line.workDate >= startDate && line.workDate <= endDate,
-  )
-  if (lineItems.length === 0) return null
-
-  const totalHours = lineItems.reduce((sum, line) => sum + line.hours, 0)
-  const grossPay = lineItems.reduce((sum, line) => sum + line.amount, 0)
-
-  return {
-    ...slip,
-    lineItems,
-    totalHours: Math.round(totalHours * 100) / 100,
-    grossPay: Math.round(grossPay * 100) / 100,
-  }
 }
 
 export function formatPayrollRunLabel(run: PayrollRun): string {

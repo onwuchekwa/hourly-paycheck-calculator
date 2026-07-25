@@ -29,6 +29,7 @@ import {
   removePunchAtIndex,
   replacePunchAtIndex,
   serializePunchesForHistory,
+  timestampOnWorkDate,
 } from '../../lib/timeEntries'
 import {
   formatDate,
@@ -138,7 +139,7 @@ export function TimesheetPage() {
       await updateDoc(doc(db, 'timeEntries', docId), {
         punches: punchesToFirestore([
           ...currentPunches,
-          { clockIn: Timestamp.now(), clockOut: null },
+          { clockIn: timestampOnWorkDate(workDate), clockOut: null },
         ]),
         clockIn: null,
         clockOut: null,
@@ -168,7 +169,7 @@ export function TimesheetPage() {
       const punches = [...getPunches(open.entry)]
       punches[open.punchIndex] = {
         ...punches[open.punchIndex],
-        clockOut: Timestamp.now(),
+        clockOut: timestampOnWorkDate(open.entry.workDate),
       }
 
       await updateDoc(doc(db, 'timeEntries', open.entryId), {

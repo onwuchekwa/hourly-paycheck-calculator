@@ -40,14 +40,40 @@ export function endOfWorkDate(workDate: string): Date {
   return new Date(y, m - 1, d, 23, 59, 59, 999)
 }
 
+export function alignTimestampToWorkDate(ts: Timestamp, workDate: string): Timestamp {
+  const [y, m, d] = workDate.split('-').map(Number)
+  const src = ts.toDate()
+  return Timestamp.fromDate(
+    new Date(y, m - 1, d, src.getHours(), src.getMinutes(), src.getSeconds(), src.getMilliseconds()),
+  )
+}
+
+export function timestampOnWorkDate(workDate: string, when: Date = new Date()): Timestamp {
+  return alignTimestampToWorkDate(Timestamp.fromDate(when), workDate)
+}
+
+function alignPunchToWorkDate(punch: TimePunch, workDate: string): TimePunch {
+  const clockIn = toTimestamp(punch.clockIn)
+  if (!clockIn) return punch
+  const clockOut = toTimestamp(punch.clockOut)
+  return {
+    clockIn: alignTimestampToWorkDate(clockIn, workDate),
+    clockOut: clockOut ? alignTimestampToWorkDate(clockOut, workDate) : null,
+  }
+}
+
 export function normalizeEntry(entry: TimeEntry): TimeEntry {
   if (entry.punches && entry.punches.length > 0) {
     return {
       ...entry,
-      punches: entry.punches.map((p) => ({
-        clockIn: toTimestamp(p.clockIn) ?? p.clockIn,
-        clockOut: toTimestamp(p.clockOut),
-      })),
+      punches: entry.punches
+        .map((p) => alignPunchToWorkDate(
+          {
+            clockIn: toTimestamp(p.clockIn) ?? p.clockIn,
+            clockOut: toTimestamp(p.clockOut),
+          },
+          entry.workDate,
+        )),
     }
   }
 
@@ -56,7 +82,7 @@ export function normalizeEntry(entry: TimeEntry): TimeEntry {
   if (clockIn) {
     return {
       ...entry,
-      punches: [{ clockIn, clockOut }],
+      punches: [alignPunchToWorkDate({ clockIn, clockOut }, entry.workDate)],
     }
   }
 

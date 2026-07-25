@@ -1,6 +1,7 @@
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { LoadingSpinner } from '../components/LoadingSpinner'
+import { adminHomePath } from '../lib/roles'
 
 export function HomePage() {
   const { user, profile, loading } = useAuth()
@@ -9,7 +10,7 @@ export function HomePage() {
 
   if (user && profile) {
     if (profile.mustChangePassword) return <Navigate to="/change-password" replace />
-    return <Navigate to={profile.role === 'admin' ? '/admin' : '/employee'} replace />
+    return <Navigate to={adminHomePath(profile.role)} replace />
   }
 
   return (

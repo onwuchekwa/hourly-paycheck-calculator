@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase/firestore'
 
-export type UserRole = 'admin' | 'employee'
+export type UserRole = 'admin' | 'employer' | 'employee'
 
 export type TimeEntryStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
 

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { LoadingSpinner } from '../components/LoadingSpinner'
+import { adminHomePath } from '../lib/roles'
 
 export function ChangePasswordPage() {
   const { user, profile, loading, changePassword } = useAuth()
@@ -14,10 +15,10 @@ export function ChangePasswordPage() {
   if (loading) return <LoadingSpinner fullPage />
   if (!user || !profile) return <Navigate to="/login" replace />
   if (!profile.mustChangePassword && !done) {
-    return <Navigate to={profile.role === 'admin' ? '/admin' : '/employee'} replace />
+    return <Navigate to={adminHomePath(profile.role)} replace />
   }
   if (done) {
-    return <Navigate to={profile.role === 'admin' ? '/admin' : '/employee'} replace />
+    return <Navigate to={adminHomePath(profile.role)} replace />
   }
 
   const handleSubmit = async (e: FormEvent) => {

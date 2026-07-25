@@ -5,6 +5,7 @@ import { AlertBanner } from '../components/AlertBanner'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { useFirebaseEmulators } from '../lib/firebase-config'
 import { getAuthErrorMessage } from '../lib/errors'
+import { adminHomePath } from '../lib/roles'
 
 export function LoginPage() {
   const { login, user, profile, loading } = useAuth()
@@ -18,7 +19,31 @@ export function LoginPage() {
 
   if (user && profile) {
     if (profile.mustChangePassword) return <Navigate to="/change-password" replace />
-    return <Navigate to={profile.role === 'admin' ? '/admin' : '/employee'} replace />
+    return <Navigate to={adminHomePath(profile.role)} replace />
+  }
+
+  if (user && !profile) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+        <div className="card w-full max-w-md space-y-4">
+          <h1 className="text-xl font-bold text-slate-900">Account setup incomplete</h1>
+          <AlertBanner variant="error">
+            You signed in successfully, but your Firestore user profile is missing. An admin must
+            create a document at{' '}
+            <code className="rounded bg-white px-1">users/{user.uid}</code> with{' '}
+            <code className="rounded bg-white px-1">role: &quot;admin&quot;</code> (or{' '}
+            <code className="rounded bg-white px-1">&quot;employer&quot;</code>), your display name,
+            and <code className="rounded bg-white px-1">active: true</code>.
+          </AlertBanner>
+          <p className="text-sm text-slate-600">
+            Signed in as <strong>{user.email}</strong>
+          </p>
+          <Link to="/" className="btn-secondary inline-block text-center">
+            Back to home
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   const handleSubmit = async (e: FormEvent) => {

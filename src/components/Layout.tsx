@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { classNames } from '../lib/utils'
+import { isAdminRole } from '../lib/roles'
 
 interface NavItem {
   to: string
@@ -29,8 +30,8 @@ const adminNav: NavItem[] = [
 export function Layout() {
   const { profile, logout } = useAuth()
   const navigate = useNavigate()
-  const nav = profile?.role === 'admin' ? adminNav : employeeNav
-  const basePath = profile?.role === 'admin' ? '/admin' : '/employee'
+  const nav = isAdminRole(profile?.role) ? adminNav : employeeNav
+  const basePath = isAdminRole(profile?.role) ? '/admin' : '/employee'
 
   const handleLogout = async () => {
     await logout()

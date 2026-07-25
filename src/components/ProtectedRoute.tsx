@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { LoadingSpinner } from './LoadingSpinner'
+import { adminHomePath, isAdminRole } from '../lib/roles'
 
 interface ProtectedRouteProps {
   role?: 'admin' | 'employee'
@@ -19,8 +20,12 @@ export function ProtectedRoute({ role }: ProtectedRouteProps) {
     return <Navigate to="/change-password" replace />
   }
 
-  if (role && profile.role !== role) {
-    return <Navigate to={profile.role === 'admin' ? '/admin' : '/employee'} replace />
+  if (role === 'admin' && !isAdminRole(profile.role)) {
+    return <Navigate to={adminHomePath(profile.role)} replace />
+  }
+
+  if (role === 'employee' && isAdminRole(profile.role)) {
+    return <Navigate to="/admin" replace />
   }
 
   return <Outlet />

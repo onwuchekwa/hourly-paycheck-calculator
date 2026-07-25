@@ -133,6 +133,7 @@ export interface MockPaycheckPreview {
   hourlyRate: number
   dayBreakdown: MockPaycheckDayLine[]
   existingPaySlipId?: string
+  includedPaidPeriods?: Array<{ id: string; startDate: string; endDate: string }>
 }
 
 export interface PaySlip {

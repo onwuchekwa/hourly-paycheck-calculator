@@ -137,6 +137,35 @@ export function paySlipMatchesPeriod(slip: PaySlip, period: PayPeriod): boolean 
   return slip.payPeriodStart === period.startDate && slip.payPeriodEnd === period.endDate
 }
 
+export function dateRangeOverlapsPeriod(
+  rangeStart: string,
+  rangeEnd: string,
+  period: PayPeriod,
+): boolean {
+  return period.startDate <= rangeEnd && period.endDate >= rangeStart
+}
+
+export function findIncludedPaidPeriods(
+  rangeStart: string,
+  rangeEnd: string,
+  periods: PayPeriod[],
+  paySlips: PaySlip[],
+): PayPeriod[] {
+  return periods
+    .filter((period) => dateRangeOverlapsPeriod(rangeStart, rangeEnd, period))
+    .filter((period) => paySlips.some((slip) => paySlipMatchesPeriod(slip, period)))
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))
+}
+
+export function isDateInPaidPeriod(
+  workDate: string,
+  paidPeriods: Array<{ startDate: string; endDate: string }>,
+): boolean {
+  return paidPeriods.some(
+    (period) => workDate >= period.startDate && workDate <= period.endDate,
+  )
+}
+
 export function mergeEmployeePaySlips(slips: PaySlip[]): PaySlip | null {
   if (slips.length === 0) return null
 

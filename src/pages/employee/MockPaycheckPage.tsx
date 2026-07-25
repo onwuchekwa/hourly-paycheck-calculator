@@ -3,7 +3,7 @@ import { collection, doc, getDoc, getDocs, query, where, orderBy } from 'firebas
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { MockPaycheckPreview, PayPeriod, PaySlip, TimeEntry, UserProfile } from '../../lib/types'
-import { buildMockPaycheckForEmployee, mergeEmployeePaySlips, paySlipMatchesPeriod } from '../../lib/payroll'
+import { buildMockPaycheckForEmployee, findIncludedPaidPeriods, mergeEmployeePaySlips, paySlipMatchesPeriod } from '../../lib/payroll'
 import { getEmployeeRates } from '../../lib/rates'
 import { formatDate, todayString } from '../../lib/utils'
 import { DatePicker } from '../../components/DatePicker'
@@ -22,7 +22,6 @@ export function MockPaycheckPage() {
   const { user, profile } = useAuth()
   const [periods, setPeriods] = useState<PayPeriod[]>([])
   const [selectedPeriodId, setSelectedPeriodId] = useState('')
-  const [periodPresetId, setPeriodPresetId] = useState('')
   const [viewMode, setViewMode] = useState<EarningsViewMode>('estimated')
   const [startDate, setStartDate] = useState(defaultStartDate())
   const [endDate, setEndDate] = useState(todayString())
@@ -46,7 +45,6 @@ export function MockPaycheckPage() {
       const openPeriod = list.find((p) => p.status === 'open')
       setSelectedPeriodId(openPeriod?.id ?? list[0]?.id ?? '')
       if (openPeriod) {
-        setPeriodPresetId(openPeriod.id)
         setStartDate(openPeriod.startDate)
         setEndDate(openPeriod.endDate)
       }
@@ -63,16 +61,6 @@ export function MockPaycheckPage() {
     setOfficialPeriod(null)
     setHasPreviewed(false)
     setError('')
-  }
-
-  const applyPeriodPreset = (periodId: string) => {
-    setPeriodPresetId(periodId)
-    if (!periodId) return
-    const period = periods.find((p) => p.id === periodId)
-    if (!period) return
-    setStartDate(period.startDate)
-    setEndDate(period.endDate)
-    clearResults()
   }
 
   const resolveFallbackRate = async (uid: string): Promise<number> => {
@@ -167,10 +155,24 @@ export function MockPaycheckPage() {
         .map((d) => ({ id: d.id, ...d.data() }) as TimeEntry)
         .filter((e) => e.workDate >= startDate && e.workDate <= endDate)
 
-      const [rates, fallbackRate] = await Promise.all([
+      const [rates, fallbackRate, slipsSnap] = await Promise.all([
         getEmployeeRates(profile.uid),
         resolveFallbackRate(profile.uid),
+        getDocs(
+          query(
+            collection(db, 'paySlips'),
+            where('employeeId', '==', employeeId),
+            orderBy('payPeriodEnd', 'desc'),
+          ),
+        ),
       ])
+      const paySlips = slipsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as PaySlip)
+      const includedPaidPeriods = findIncludedPaidPeriods(
+        startDate,
+        endDate,
+        periods,
+        paySlips,
+      )
 
       const result = buildMockPaycheckForEmployee(
         profile.uid,
@@ -188,7 +190,14 @@ export function MockPaycheckPage() {
         return
       }
 
-      setPreview(result)
+      setPreview({
+        ...result,
+        includedPaidPeriods: includedPaidPeriods.map((period) => ({
+          id: period.id,
+          startDate: period.startDate,
+          endDate: period.endDate,
+        })),
+      })
     } catch {
       setError('Failed to load earnings preview.')
     } finally {
@@ -280,7 +289,6 @@ export function MockPaycheckPage() {
                 max={endDate || todayString()}
                 onChange={(value) => {
                   setStartDate(value)
-                  setPeriodPresetId('')
                   clearResults()
                 }}
                 required
@@ -291,33 +299,11 @@ export function MockPaycheckPage() {
                 min={startDate}
                 onChange={(value) => {
                   setEndDate(value)
-                  setPeriodPresetId('')
                   clearResults()
                 }}
                 required
               />
             </div>
-
-            {periods.length > 0 && (
-              <div>
-                <label htmlFor="period-preset" className="label-field">
-                  Fill dates from pay period (optional)
-                </label>
-                <select
-                  id="period-preset"
-                  className="input-field"
-                  value={periodPresetId}
-                  onChange={(e) => applyPeriodPreset(e.target.value)}
-                >
-                  <option value="">Custom date range</option>
-                  {periods.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.startDate} – {p.endDate} ({p.status})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
           </>
         )}
 

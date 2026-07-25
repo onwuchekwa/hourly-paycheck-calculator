@@ -1,4 +1,5 @@
 import type { MockPaycheckPreview } from '../lib/types'
+import { isDateInPaidPeriod } from '../lib/payroll'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
 import { StatusBadge } from './StatusBadge'
 
@@ -8,6 +9,7 @@ interface MockPaycheckPreviewProps {
 
 export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
   const missingRate = preview.dayBreakdown.some((line) => line.rate <= 0)
+  const paidPeriods = preview.includedPaidPeriods ?? []
 
   return (
     <div className="card max-w-2xl">
@@ -22,6 +24,22 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
         Estimate only. Only approved time is included in actual payroll. Draft, submitted, or rejected
         hours may change or be excluded.
       </div>
+
+      {paidPeriods.length > 0 && (
+        <div role="status" className="mb-4 rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <p className="font-medium">Includes already-paid pay period(s)</p>
+          <p className="mt-1">
+            Your date range overlaps official payroll for{' '}
+            {paidPeriods
+              .map(
+                (period) =>
+                  `${formatDisplayDate(period.startDate)} – ${formatDisplayDate(period.endDate)}`,
+              )
+              .join('; ')}
+            . Days in those periods may already appear on a finalized pay slip.
+          </p>
+        </div>
+      )}
 
       {missingRate && (
         <div role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -60,9 +78,20 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
           </tr>
         </thead>
         <tbody>
-          {preview.dayBreakdown.map((line) => (
+          {preview.dayBreakdown.map((line) => {
+            const inPaidPeriod =
+              paidPeriods.length > 0 && isDateInPaidPeriod(line.workDate, paidPeriods)
+
+            return (
             <tr key={line.workDate} className="border-b border-slate-100">
-              <td className="py-2">{formatDisplayDate(line.workDate)}</td>
+              <td className="py-2">
+                <span>{formatDisplayDate(line.workDate)}</span>
+                {inPaidPeriod && (
+                  <span className="ml-2 inline-flex rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800">
+                    Paid period
+                  </span>
+                )}
+              </td>
               <td className="py-2 text-right">{formatDecimalHours(line.hours)}</td>
               <td className="py-2 text-right">{formatCurrency(line.rate)}</td>
               <td className="py-2 text-right">{formatCurrency(line.amount)}</td>
@@ -70,7 +99,8 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
                 <StatusBadge status={line.status} />
               </td>
             </tr>
-          ))}
+            )
+          })}
         </tbody>
         <tfoot>
           <tr>

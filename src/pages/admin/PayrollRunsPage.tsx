@@ -18,7 +18,7 @@ import { db } from '../../lib/firebase'
 import type { PayPeriod, PayrollRun, TimeEntry, UserProfile, CompanySettings } from '../../lib/types'
 import { buildPayrollSnapshot } from '../../lib/payroll'
 import { getEmployeeRates } from '../../lib/rates'
-import { formatCurrency } from '../../lib/utils'
+import { formatCurrency, formatDecimalHours } from '../../lib/utils'
 import { getCallableErrorMessage } from '../../lib/errors'
 import { AlertBanner } from '../../components/AlertBanner'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -288,7 +288,7 @@ export function PayrollRunsPage() {
               {displayRun.entries.map((e) => (
                 <tr key={e.employeeId} className="border-b border-slate-100">
                   <td className="py-2">{e.employeeName}</td>
-                  <td className="py-2 text-right">{e.totalHours.toFixed(2)}</td>
+                  <td className="py-2 text-right">{formatDecimalHours(e.totalHours)}</td>
                   <td className="py-2 text-right">{formatCurrency(e.grossPay)}</td>
                 </tr>
               ))}
@@ -296,7 +296,7 @@ export function PayrollRunsPage() {
             <tfoot>
               <tr>
                 <td className="pt-3 font-semibold">Total</td>
-                <td className="pt-3 text-right font-semibold">{displayRun.totalHours.toFixed(2)}</td>
+                <td className="pt-3 text-right font-semibold">{formatDecimalHours(displayRun.totalHours)}</td>
                 <td className="pt-3 text-right font-bold text-brand-700">{formatCurrency(displayRun.totalGross)}</td>
               </tr>
             </tfoot>

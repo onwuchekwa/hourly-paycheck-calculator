@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import type { PaySlip } from '../lib/types'
-import { formatCurrency, formatDisplayDate } from '../lib/utils'
+import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
 
 interface PaySlipDocumentProps {
   paySlip: PaySlip
@@ -64,7 +64,7 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
           </div>
           <div>
             <dt className="text-slate-500">Total Hours</dt>
-            <dd className="font-medium">{paySlip.totalHours.toFixed(2)}</dd>
+            <dd className="font-medium">{formatDecimalHours(paySlip.totalHours)}</dd>
           </div>
         </dl>
         <table className="w-full text-sm">
@@ -80,7 +80,7 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
             {paySlip.lineItems.map((line) => (
               <tr key={line.workDate} className="border-b border-slate-100">
                 <td className="py-2">{formatDisplayDate(line.workDate)}</td>
-                <td className="py-2 text-right">{line.hours.toFixed(2)}</td>
+                <td className="py-2 text-right">{formatDecimalHours(line.hours)}</td>
                 <td className="py-2 text-right">{formatCurrency(line.rate)}</td>
                 <td className="py-2 text-right">{formatCurrency(line.amount)}</td>
               </tr>

@@ -14,8 +14,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { TimeEntry } from '../../lib/types'
 import {
-  calcHours,
   formatDisplayDate,
+  formatDuration,
   formatTime,
   timestampToInputValue,
   inputValueToDate,
@@ -186,7 +186,7 @@ export function TimeReviewPage() {
                 <StatusBadge status={e.status} />
               </div>
               <p className="mt-2 text-sm">
-                {formatTime(e.clockIn)} – {formatTime(e.clockOut)} ({calcHours(e.clockIn, e.clockOut).toFixed(2)} hrs)
+                {formatTime(e.clockIn)} – {formatTime(e.clockOut)} ({formatDuration(e.clockIn, e.clockOut)})
               </p>
 
               {editingId === e.id ? (

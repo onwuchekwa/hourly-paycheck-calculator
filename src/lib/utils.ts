@@ -64,17 +64,27 @@ export function calcHours(
   return Math.round(hours * 100) / 100
 }
 
+function formatDurationSeconds(totalSeconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds))
+  const hours = Math.floor(safeSeconds / 3_600)
+  const minutes = Math.floor((safeSeconds % 3_600) / 60)
+  const seconds = safeSeconds % 60
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+}
+
+export function formatDecimalHours(hours: number): string {
+  return formatDurationSeconds(Math.round(hours * 3_600))
+}
+
 export function formatDuration(
   clockIn: Timestamp | null | undefined,
   clockOut: Timestamp | null | undefined,
 ): string {
   if (!clockIn || !clockOut) return '—'
   const ms = clockOut.toMillis() - clockIn.toMillis()
-  if (ms <= 0) return '0:00'
-  const totalMinutes = Math.floor(ms / 60_000)
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  return `${hours}:${String(minutes).padStart(2, '0')}`
+  if (ms <= 0) return '00:00:00'
+  return formatDurationSeconds(Math.floor(ms / 1_000))
 }
 
 export function timeEntryDocId(employeeId: string, workDate: string): string {

@@ -3,7 +3,7 @@ import { collection, doc, getDoc, getDocs, query, where, orderBy } from 'firebas
 import { db } from '../../lib/firebase'
 import type { CompanySettings, PayrollRun } from '../../lib/types'
 import { exportPayrollCsv } from '../../lib/payroll'
-import { formatCurrency } from '../../lib/utils'
+import { formatCurrency, formatDecimalHours } from '../../lib/utils'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
 export function ReportsPage() {
@@ -71,7 +71,7 @@ export function ReportsPage() {
         {selectedRun && (
           <div className="rounded-lg bg-slate-50 p-4 text-sm">
             <p>Employees: {selectedRun.entries.length}</p>
-            <p>Total hours: {selectedRun.totalHours.toFixed(2)}</p>
+            <p>Total hours: {formatDecimalHours(selectedRun.totalHours)}</p>
             <p>Total gross: {formatCurrency(selectedRun.totalGross)}</p>
           </div>
         )}

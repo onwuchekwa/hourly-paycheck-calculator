@@ -328,3 +328,10 @@ export function replacePunchAtIndex(
 
   return { ok: true, punches }
 }
+
+export function removePunchAtIndex(entry: TimeEntry, index: number): TimePunch[] {
+  const punches = [...getPunches(entry)]
+  if (index < 0 || index >= punches.length) return punches
+  punches.splice(index, 1)
+  return punches
+}

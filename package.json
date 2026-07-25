@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:local": "concurrently -k -n emulators,vite -c yellow,cyan \"npm run emulators\" \"vite\"",
-    "emulators": "npm run build --prefix functions && npx firebase-tools@latest emulators:start --export-on-exit=./.firebase-emulator-data",
+    "dev:api": "npm run dev --prefix server",
+    "dev:app": "concurrently -k -n api,vite -c magenta,cyan \"npm run dev:api\" \"vite\"",
+    "dev:local": "concurrently -k -n emulators,api,vite -c yellow,magenta,cyan \"npm run emulators\" \"npm run dev:api\" \"vite\"",
+    "emulators": "npx firebase-tools@latest emulators:start --export-on-exit=./.firebase-emulator-data",
     "seed:emulator": "node scripts/seedEmulator.mjs",
     "setup:email": "node scripts/configure-smtp.mjs",
     "build": "tsc -b && vite build",

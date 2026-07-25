@@ -36,7 +36,14 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isOwner(userId) &&
         isEmployee() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt']) ||
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mustChangePassword', 'updatedAt']) &&
+            resource.data.mustChangePassword == true &&
+            request.resource.data.mustChangePassword == false
+          )
+        )
       );
       allow delete: if false;
     }

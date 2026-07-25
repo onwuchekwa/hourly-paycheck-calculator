@@ -15,49 +15,48 @@ HourlyPay sends email when:
 
 How it works
 ------------
-Cloud Functions write to the Firestore "mail" collection.
-The deliverMail function sends each document via your SMTP server.
+The Node.js API in server/ sends email directly via your SMTP server.
+No Firebase Blaze plan or Cloud Functions required.
 
-Production setup
-----------------
-1. Choose an SMTP provider (SendGrid, Mailgun, Amazon SES, Gmail OAuth2, etc.)
+Local setup
+-----------
+1. Choose an SMTP provider (Brevo, SendGrid, Mailgun, Amazon SES, etc.)
 
-2. Set function parameters:
-   npx firebase-tools@latest functions:config:set \\
-     smtp.host="smtp.sendgrid.net" \\
-     smtp.port="587" \\
-     smtp.user="apikey" \\
-     smtp.from="HourlyPay <noreply@yourcompany.com>" \\
-     app.sign_in_url="https://your-app.web.app/login"
+2. Copy server/.env.example to server/.env and fill in:
+   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, APP_SIGN_IN_URL
+   FIREBASE_SERVICE_ACCOUNT (full JSON from Firebase Console → Service accounts)
+   ALLOWED_ORIGIN=http://localhost:5173
 
-   Or use Firebase params (recommended for Functions v2):
-   npx firebase-tools@latest functions:secrets:set SMTP_PASS
+3. Copy .env.example to .env and set:
+   VITE_API_URL=http://localhost:3001
 
-3. Deploy functions:
-   npx firebase-tools@latest deploy --only functions
+4. Run the app:
+   npm install
+   npm install --prefix server
+   npm run dev:app
 
-4. Set company email in Admin → Company Settings (used as reply-to).
+5. Create an employee in Admin → Employees — the welcome email sends immediately.
 
-Local emulator testing
+Production (free tier)
 ----------------------
-1. Copy functions/.env.example to functions/.env
-2. Create functions/.secret.local with: SMTP_PASS=your-password
-3. Run: npm run dev:local
-4. Create an employee — check Firestore "mail" collection in Emulator UI
-   Delivery status is tracked in mail.delivery.state
+Firebase Spark (free): Auth + Firestore + Hosting
+API on Vercel Hobby (free): deploy server/ with vercel.json
 
-Recommended providers
----------------------
+1. Deploy API to Vercel — set environment variables:
+   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, APP_SIGN_IN_URL
+   FIREBASE_SERVICE_ACCOUNT, ALLOWED_ORIGIN=https://your-app.web.app
+
+2. Set GitHub secret VITE_API_URL to your Vercel API URL (e.g. https://your-api.vercel.app)
+
+3. Deploy Firebase Hosting as usual (npm run build && firebase deploy --only hosting)
+
+Recommended SMTP providers (free tiers)
+---------------------------------------
+• Brevo — smtp-relay.brevo.com:587 (300 emails/day free)
 • SendGrid — smtp.sendgrid.net:587, user "apikey", pass = API key
 • Mailgun — smtp.mailgun.org:587
-• Amazon SES — email-smtp.{region}.amazonaws.com:587
 
-Verify delivery
----------------
-After creating an employee, check:
-  Firestore → mail → {doc} → delivery.state should be "SUCCESS"
-If "SKIPPED", SMTP_HOST/SMTP_USER/SMTP_PASS are not configured.
-If "ERROR", check delivery.error and Cloud Functions logs.
+Set Company email in Admin → Company Settings (used as reply-to on outgoing mail).
 `
 
 console.log(steps)

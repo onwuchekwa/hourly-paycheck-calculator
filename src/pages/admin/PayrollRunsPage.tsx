@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { httpsCallable } from 'firebase/functions'
 import {
   collection,
   getDocs,
@@ -14,7 +13,8 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
-import { db, functions } from '../../lib/firebase'
+import { apiPost } from '../../lib/api'
+import { db } from '../../lib/firebase'
 import type { PayPeriod, PayrollRun, TimeEntry, UserProfile, CompanySettings } from '../../lib/types'
 import { buildPayrollSnapshot } from '../../lib/payroll'
 import { getEmployeeRates } from '../../lib/rates'
@@ -195,12 +195,10 @@ export function PayrollRunsPage() {
       await batch.commit()
 
       if (emailOnFinalize) {
-        const emailBatchFn = httpsCallable<
-          { payrollRunId: string },
-          { success: boolean; count: number }
-        >(functions, 'emailPaySlipsBatch')
-        const result = await emailBatchFn({ payrollRunId: run.id })
-        setSuccess(`Payroll finalized. ${result.data.count} pay slip email(s) queued.`)
+        const result = await apiPost<{ success: boolean; count: number }>('/api/email/payslip-batch', {
+          payrollRunId: run.id,
+        })
+        setSuccess(`Payroll finalized. ${result.count} pay slip email(s) sent.`)
       } else {
         setSuccess('Payroll finalized and pay slips generated.')
       }

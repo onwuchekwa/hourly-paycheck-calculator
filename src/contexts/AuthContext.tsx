@@ -14,9 +14,8 @@ import {
   updatePassword,
   type User,
 } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
-import { httpsCallable } from 'firebase/functions'
-import { auth, db, functions } from '../lib/firebase'
+import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { auth, db } from '../lib/firebase'
 import type { UserProfile } from '../lib/types'
 
 interface AuthContextValue {
@@ -73,8 +72,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const changePassword = useCallback(async (newPassword: string) => {
     if (!auth.currentUser) throw new Error('Not authenticated')
     await updatePassword(auth.currentUser, newPassword)
-    const clearFn = httpsCallable(functions, 'clearMustChangePassword')
-    await clearFn()
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      mustChangePassword: false,
+      updatedAt: serverTimestamp(),
+    })
     await refreshProfile()
   }, [refreshProfile])
 

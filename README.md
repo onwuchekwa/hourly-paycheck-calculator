@@ -5,7 +5,7 @@ A Firebase-powered hourly payroll application for small teams. Employers manage 
 ## Features
 
 - **Auth**: Email/password only (no Google, no self-registration)
-- **Employees**: Created by employer via Cloud Function with temp password + welcome email
+- **Employees**: Created by employer via API with temp password + welcome email
 - **Forced password change** on first login
 - **Timesheet**: Calendar picker, clock in/out buttons, one entry per day, manual edits with audit trail
 - **Rate history**: Per-employee rates with effective dates
@@ -17,85 +17,59 @@ A Firebase-powered hourly payroll application for small teams. Employers manage 
 
 - Vite + React + TypeScript
 - Tailwind CSS v4
-- Firebase (Auth, Firestore, Cloud Functions, Hosting)
-- Nodemailer SMTP delivery via Cloud Functions (mail collection queue)
+- Firebase Spark (Auth, Firestore, Hosting) — **no Blaze plan required**
+- Node.js API (`server/`) with Nodemailer SMTP for email
 - jsPDF + html2canvas for pay slip PDF export
 
 ## Prerequisites
 
 - Node.js 20+
 - Firebase CLI: `npm install -g firebase-tools` or use `npx firebase-tools@latest`
-- A Firebase project with Blaze plan (for Cloud Functions)
-- An SMTP provider (SendGrid, Mailgun, Amazon SES, etc.) for sending emails
+- An SMTP provider with a free tier (Brevo, SendGrid, Mailgun, etc.)
 
 ## Setup
 
-### 1. Create Firebase project
+### 1. Create Firebase project (Spark / free plan)
 
 ```bash
 npx firebase-tools@latest login
-npx firebase-tools@latest projects:create your-project-id --display-name "HourlyPay"
 npx firebase-tools@latest use your-project-id
 ```
-
-### 2. Enable services
 
 In Firebase Console:
 
 1. **Authentication** → Sign-in method → Enable **Email/Password** only (disable Google)
 2. **Firestore** → Create database (production mode)
-3. **Functions** → Enable (requires Blaze plan)
 
-### 3. Configure email (SMTP)
+### 2. Configure email (SMTP)
 
 HourlyPay sends welcome emails when employees are created and pay slip emails on demand or after payroll finalize.
 
 ```bash
 node scripts/configure-smtp.mjs   # prints full setup guide
-cp functions/.env.example functions/.env   # for local emulators
-```
-
-**Production:**
-
-```bash
-# Set SMTP password as a secret
-npx firebase-tools@latest functions:secrets:set SMTP_PASS
-
-# Deploy — set other params during deploy or in Firebase Console → Functions → Environment
-# SMTP_HOST, SMTP_PORT (587), SMTP_USER, SMTP_FROM, APP_SIGN_IN_URL
-npx firebase-tools@latest deploy --only functions
-```
-
-Set **Company email** in Admin → Company Settings (used as reply-to on outgoing mail).
-
-### 4. Configure environment
-
-```bash
+cp server/.env.example server/.env
 cp .env.example .env
 ```
 
-Fill in values from Firebase Console → Project Settings → Your apps → Web app config.
+Fill in `server/.env` with SMTP credentials and your Firebase service account JSON.
+Set `VITE_API_URL=http://localhost:3001` in `.env`.
 
-### 5. Install dependencies
+Set **Company email** in Admin → Company Settings (used as reply-to on outgoing mail).
+
+### 3. Install dependencies
 
 ```bash
 npm install
-cd functions && npm install && cd ..
+npm install --prefix server
 ```
 
-### 6. Deploy Firestore rules and indexes
+### 4. Deploy Firestore rules and indexes
 
 ```bash
 npx firebase-tools@latest deploy --only firestore
 ```
 
-### 7. Deploy Cloud Functions
-
-```bash
-npx firebase-tools@latest deploy --only functions
-```
-
-### 8. Create employer account
+### 5. Create employer account
 
 **Option A — Firebase Console (manual)**
 
@@ -138,41 +112,46 @@ export GOOGLE_APPLICATION_CREDENTIALS=path/to/serviceAccount.json
 npx tsx scripts/createEmployer.ts --email admin@company.com --name "Admin User" --password "securepass123"
 ```
 
-### 9. Run locally
+### 6. Run locally
 
-HourlyPay is a **Firebase client app**. `npm run dev` only starts the Vite UI — auth, Firestore data, and Cloud Functions still need Firebase (local emulators or a cloud project).
+**Option A — Real Firebase project + local API (recommended)**
 
-**Option A — Firebase Emulators (no cloud project)**
+```bash
+npm run dev:app
+```
+
+Runs the API on http://localhost:3001 and Vite on http://localhost:5173.
+
+**Option B — Firebase Emulators (optional, no cloud writes)**
 
 Requires **Java 11+** for the Firestore emulator.
 
 ```bash
-cp .env.example .env
-# Set VITE_USE_FIREBASE_EMULATORS=true (see .env.example)
+# Set VITE_USE_FIREBASE_EMULATORS=true in .env
 npm run dev:local
 npm run seed:emulator
 ```
 
-Open http://localhost:5173 and sign in with **admin@local.test** / **password123**.
+Sign in with **admin@local.test** / **password123**. Emulator UI: http://localhost:4000
 
-Emulator UI: http://localhost:4000
+### 7. Deploy
 
-**Option B — Real Firebase project (no Java needed)**
-
-```bash
-cp .env.example .env
-# Fill in Firebase Console web app config; set VITE_USE_FIREBASE_EMULATORS=false
-npm run dev
-```
-
-Create an employer account (see step 8), then sign in.
-
-### 10. Build & deploy hosting
+**Firebase Hosting + Firestore (Spark / free):**
 
 ```bash
 npm run build
-npx firebase-tools@latest deploy --only hosting
+npx firebase-tools@latest deploy --only hosting,firestore
 ```
+
+**API (Vercel Hobby / free):**
+
+Deploy the repo to Vercel. Set environment variables in the Vercel dashboard:
+
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `APP_SIGN_IN_URL`
+- `FIREBASE_SERVICE_ACCOUNT` (full JSON)
+- `ALLOWED_ORIGIN` (your Hosting URL)
+
+Set `VITE_API_URL` to your Vercel API URL when building the web app.
 
 ## GitHub Actions CI/CD
 
@@ -184,51 +163,39 @@ Add these repository secrets:
 - `VITE_FIREBASE_STORAGE_BUCKET`
 - `VITE_FIREBASE_MESSAGING_SENDER_ID`
 - `VITE_FIREBASE_APP_ID`
-- `FIREBASE_SERVICE_ACCOUNT` (JSON service account key — used for Firestore, Functions, and Hosting deploys)
+- `VITE_API_URL` (your deployed API URL)
+- `FIREBASE_SERVICE_ACCOUNT` (JSON service account key)
 
 - **Pull requests** → Firebase Hosting preview channel
-- **Push to `main`** → deploy Firestore rules, Cloud Functions, and live Hosting
+- **Push to `main`** → deploy Firestore rules and live Hosting
+
+Deploy the API separately to Vercel (or run it locally for development).
 
 ## Project Structure
 
 ```
 src/
-  components/     Shared UI (Layout, StatusBadge, PaySlipDocument, etc.)
+  components/     Shared UI
   contexts/       AuthContext
-  lib/            Firebase config, types, payroll logic
-  pages/
-    employee/     Dashboard, Timesheet, TimeHistory, PaySlips, Settings
-    admin/        Dashboard, Employees, TimeReview, Payroll, Reports
-functions/
+  lib/            Firebase config, API client, payroll logic
+  pages/          Employee and admin pages
+server/
   src/
-    index.ts        createEmployee, emailPaySlip, emailPaySlipsBatch
-    email.ts        HTML email templates
-    deliverMail.ts  Firestore trigger — sends queued mail via SMTP
+    index.ts          Express API entry
+    email.ts          HTML email templates + SMTP send
+    routes/           employees, email endpoints
+functions/          (deprecated — replaced by server/)
 ```
 
-## Cloud Functions
+## API endpoints
 
-| Function | Description |
-|----------|-------------|
-| `createEmployee` | Creates Auth user, Firestore profile, initial rate, queues welcome email |
-| `clearMustChangePassword` | Clears `mustChangePassword` after password change |
-| `emailPaySlip` | Queues a single pay slip email |
-| `emailPaySlipsBatch` | Queues pay slip emails for all slips in a payroll run |
-| `deliverMail` | Firestore trigger — delivers queued `mail` documents via SMTP |
+| Route | Description |
+|-------|-------------|
+| `POST /api/employees` | Creates Auth user, Firestore profile, initial rate, sends welcome email |
+| `POST /api/email/payslip` | Emails a single pay slip |
+| `POST /api/email/payslip-batch` | Emails all pay slips for a payroll run |
 
-## Email delivery
-
-1. Callable functions write to the `mail` collection with `delivery.state: PENDING`
-2. `deliverMail` trigger sends via SMTP and updates `delivery.state` to `SUCCESS` or `ERROR`
-3. Check Firestore `mail` documents to verify delivery status
-
-| `delivery.state` | Meaning |
-|------------------|---------|
-| `PENDING` | Queued, waiting for trigger |
-| `PROCESSING` | Currently sending |
-| `SUCCESS` | Delivered |
-| `ERROR` | SMTP failed — see `delivery.error` |
-| `SKIPPED` | SMTP not configured |
+All routes require a Firebase ID token in the `Authorization: Bearer` header.
 
 ## Collections
 
@@ -242,7 +209,6 @@ functions/
 | `paySlips` | Generated pay slips |
 | `settings/company` | Company info for pay slips |
 | `settings/payroll` | Pay slip number counter |
-| `mail` | Outbound email queue (processed by `deliverMail` trigger) |
 
 ## License
 

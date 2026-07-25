@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { httpsCallable } from 'firebase/functions'
 import {
   addDoc,
   collection,
@@ -12,7 +11,8 @@ import {
   where,
 } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
-import { db, functions } from '../../lib/firebase'
+import { apiPost } from '../../lib/api'
+import { db } from '../../lib/firebase'
 import type { EmployeeRate, UserProfile } from '../../lib/types'
 import { formatCurrency, todayString } from '../../lib/utils'
 import { getCallableErrorMessage } from '../../lib/errors'
@@ -79,11 +79,11 @@ export function EmployeesPage() {
     }
     setSubmitting(true)
     try {
-      const createFn = httpsCallable<
-        { displayName: string; email: string; hourlyRate: number },
-        { uid: string; email: string; mailId: string }
-      >(functions, 'createEmployee')
-      await createFn({ displayName: displayName.trim(), email: email.trim(), hourlyRate: rate })
+      await apiPost<{ uid: string; email: string }>('/api/employees', {
+        displayName: displayName.trim(),
+        email: email.trim(),
+        hourlyRate: rate,
+      })
       setSuccess(`Employee created. A welcome email with sign-in instructions was sent to ${email.trim()}.`)
       setDisplayName('')
       setEmail('')

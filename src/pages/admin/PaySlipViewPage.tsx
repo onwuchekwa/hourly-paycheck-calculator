@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
-import { httpsCallable } from 'firebase/functions'
-import { db, functions } from '../../lib/firebase'
+import { apiPost } from '../../lib/api'
+import { db } from '../../lib/firebase'
 import type { PaySlip } from '../../lib/types'
 import { getCallableErrorMessage } from '../../lib/errors'
 import { AlertBanner } from '../../components/AlertBanner'
@@ -43,8 +43,7 @@ export function PaySlipViewPage() {
     setEmailing(true)
     setMessage('')
     try {
-      const emailFn = httpsCallable<{ paySlipId: string }, { success: boolean }>(functions, 'emailPaySlip')
-      await emailFn({ paySlipId: selected.id })
+      await apiPost<{ success: boolean }>('/api/email/payslip', { paySlipId: selected.id })
       setMessageVariant('success')
       setMessage(`Pay slip emailed to ${selected.employeeEmail}`)
     } catch (err) {

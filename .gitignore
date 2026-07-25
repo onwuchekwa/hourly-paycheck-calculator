@@ -12,9 +12,12 @@ dist
 dist-ssr
 *.local
 .env
+server/.env
 
 # Firebase
 functions/lib
+server/node_modules
+server/dist
 .firebase-emulator-data
 
 # Editor directories and files

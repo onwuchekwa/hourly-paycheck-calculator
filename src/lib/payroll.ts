@@ -1,4 +1,4 @@
-import type { PaySlipDayLine, PayrollLineItem, TimeEntry, EmployeeRate } from './types'
+import type { PaySlipDayLine, PayrollLineItem, PayrollRun, TimeEntry, EmployeeRate } from './types'
 import { calcEntryHours, hasCompletedPunch, normalizeEntry } from './timeEntries'
 import { formatDate } from './utils'
 import { getRateForDate } from './rates'
@@ -53,6 +53,34 @@ export function buildPayrollSnapshot(
     if (line) lines.push(line)
   }
   return lines.sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+}
+
+export function collectPaidTimeEntryIdsForPeriod(
+  runs: PayrollRun[],
+  payPeriodId: string,
+): Set<string> {
+  const paid = new Set<string>()
+  for (const run of runs) {
+    if (run.status !== 'finalized' || run.payPeriodId !== payPeriodId) continue
+    for (const line of run.entries) {
+      for (const entryId of line.timeEntryIds ?? []) paid.add(entryId)
+    }
+  }
+  return paid
+}
+
+export function excludePaidTimeEntries(entries: TimeEntry[], paidIds: Set<string>): TimeEntry[] {
+  if (paidIds.size === 0) return entries
+  return entries.filter((entry) => !paidIds.has(entry.id))
+}
+
+export function formatPayrollRunLabel(run: PayrollRun): string {
+  const parts = [`${run.payPeriodStart} – ${run.payPeriodEnd}`]
+  if (run.runType === 'supplemental') parts.push('Supplemental')
+  if (run.scope === 'selected' && run.employeeIds?.length) {
+    parts.push(run.employeeIds.length === 1 ? '1 employee' : `${run.employeeIds.length} employees`)
+  }
+  return parts.join(' · ')
 }
 
 export function exportPayrollCsv(

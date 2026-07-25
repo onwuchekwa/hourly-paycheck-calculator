@@ -80,6 +80,10 @@ export interface PayPeriod {
 
 export type PayrollRunStatus = 'preview' | 'finalized'
 
+export type PayrollRunType = 'regular' | 'supplemental'
+
+export type PayrollRunScope = 'all' | 'selected'
+
 export interface PayrollLineItem {
   employeeId: string
   employeeName: string
@@ -96,6 +100,9 @@ export interface PayrollRun {
   payPeriodStart: string
   payPeriodEnd: string
   status: PayrollRunStatus
+  runType?: PayrollRunType
+  scope?: PayrollRunScope
+  employeeIds?: string[]
   entries: PayrollLineItem[]
   totalGross: number
   totalHours: number

@@ -56,6 +56,29 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    function validRejectionReason() {
+      return request.resource.data.rejectionReason is string
+        && request.resource.data.rejectionReason.size() > 0;
+    }
+
+    function adminReviewUpdate() {
+      return isAdmin()
+        && resource.data.status == 'submitted'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'approvedAt',
+          'rejectedAt',
+          'rejectionReason',
+          'reviewedAt',
+          'reviewedBy',
+          'updatedAt',
+        ])
+        && (
+          request.resource.data.status == 'approved'
+          || (request.resource.data.status == 'rejected' && validRejectionReason())
+        );
+    }
+
     match /timeEntries/{entryId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
@@ -65,21 +88,20 @@ service cloud.firestore {
         ))
       );
       allow create: if isSignedIn() && (
-        isAdmin() ||
-        (isEmployee() && request.resource.data.employeeId == request.auth.uid)
+        isEmployee() && request.resource.data.employeeId == request.auth.uid
       );
       allow update: if isSignedIn() && (
-        isAdmin() ||
+        adminReviewUpdate() ||
         (
           isEmployee() &&
           resource.data.employeeId == request.auth.uid &&
-          resource.data.status in ['draft', 'submitted']
+          resource.data.status in ['draft', 'submitted', 'rejected']
         )
       );
-      allow delete: if isAdmin() || (
+      allow delete: if (
         isEmployee() &&
         resource.data.employeeId == request.auth.uid &&
-        resource.data.status in ['draft', 'submitted']
+        resource.data.status in ['draft', 'submitted', 'rejected']
       );
     }
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { collection, doc, getDoc, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import type { CompanySettings, PayrollRun } from '../../lib/types'
-import { exportPayrollCsv } from '../../lib/payroll'
+import { exportPayrollCsv, formatPayrollRunLabel } from '../../lib/payroll'
 import { formatCurrency, formatDecimalHours } from '../../lib/utils'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
@@ -62,7 +62,7 @@ export function ReportsPage() {
           >
             {runs.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.payPeriodStart} – {r.payPeriodEnd}
+                {formatPayrollRunLabel(r)}
               </option>
             ))}
           </select>

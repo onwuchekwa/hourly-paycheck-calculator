@@ -307,12 +307,20 @@ export function canSubmitEntry(entry: TimeEntry): boolean {
   return hasCompletedPunch(entry)
 }
 
+function isEmployeeEditableStatus(status: string): boolean {
+  return status === 'draft' || status === 'submitted' || status === 'rejected'
+}
+
 export function canDeleteEntry(entry: TimeEntry): boolean {
-  return entry.status === 'draft' || entry.status === 'submitted'
+  return isEmployeeEditableStatus(entry.status)
 }
 
 export function canEditEntry(entry: TimeEntry): boolean {
-  return entry.status === 'draft' || entry.status === 'submitted'
+  return isEmployeeEditableStatus(entry.status)
+}
+
+export function canSubmitForReview(entry: TimeEntry): boolean {
+  return (entry.status === 'draft' || entry.status === 'rejected') && canSubmitEntry(entry)
 }
 
 export function punchToEditRow(punch: TimePunch, workDate: string): EditPunchRow {

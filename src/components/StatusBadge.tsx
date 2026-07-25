@@ -10,6 +10,7 @@ const statusStyles: Record<string, string> = {
   closed: 'bg-slate-100 text-slate-600 ring-slate-200',
   preview: 'bg-violet-50 text-violet-800 ring-violet-200',
   finalized: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
+  supplemental: 'bg-amber-50 text-amber-800 ring-amber-200',
 }
 
 interface StatusBadgeProps {

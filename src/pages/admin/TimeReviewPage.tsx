@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
   collection,
-  deleteDoc,
   getDocs,
   query,
   where,
@@ -9,39 +8,28 @@ import {
   updateDoc,
   doc,
   serverTimestamp,
-  Timestamp,
 } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { TimeEntry } from '../../lib/types'
 import {
-  canDeleteEntry,
   formatEntryDuration,
   formatPunchDuration,
   getPunches,
   normalizeEntry,
-  parseEditRows,
-  punchesToEditRows,
-  punchesToFirestore,
-  serializePunchesForHistory,
-  type EditPunchRow,
 } from '../../lib/timeEntries'
 import { formatDisplayDate, formatTime } from '../../lib/utils'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
-import { ConfirmDialog } from '../../components/ConfirmDialog'
 
 export function TimeReviewPage() {
-  const { profile, user } = useAuth()
+  const { user } = useAuth()
   const [entries, setEntries] = useState<TimeEntry[]>([])
   const [filter, setFilter] = useState<'submitted' | 'all'>('submitted')
   const [loading, setLoading] = useState(true)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editRows, setEditRows] = useState<EditPunchRow[]>([{ clockIn: '', clockOut: '' }])
-  const [editReason, setEditReason] = useState('')
-  const [rejectReason, setRejectReason] = useState('')
+  const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<TimeEntry | null>(null)
+  const [error, setError] = useState('')
 
   const load = async () => {
     setLoading(true)
@@ -60,114 +48,73 @@ export function TimeReviewPage() {
 
   const handleApprove = async (id: string) => {
     setBusy(true)
-    await updateDoc(doc(db, 'timeEntries', id), {
-      status: 'approved',
-      approvedAt: serverTimestamp(),
-      reviewedAt: serverTimestamp(),
-      reviewedBy: user?.uid,
-      updatedAt: serverTimestamp(),
-    })
-    await load()
-    setBusy(false)
+    setError('')
+    try {
+      await updateDoc(doc(db, 'timeEntries', id), {
+        status: 'approved',
+        approvedAt: serverTimestamp(),
+        reviewedAt: serverTimestamp(),
+        reviewedBy: user?.uid,
+        updatedAt: serverTimestamp(),
+      })
+      await load()
+    } catch {
+      setError('Failed to approve entry.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleBulkApprove = async () => {
     const submitted = entries.filter((e) => e.status === 'submitted')
     if (submitted.length === 0) return
     setBusy(true)
-    await Promise.all(
-      submitted.map((e) =>
-        updateDoc(doc(db, 'timeEntries', e.id), {
-          status: 'approved',
-          approvedAt: serverTimestamp(),
-          reviewedAt: serverTimestamp(),
-          reviewedBy: user?.uid,
-          updatedAt: serverTimestamp(),
-        }),
-      ),
-    )
-    await load()
-    setBusy(false)
+    setError('')
+    try {
+      await Promise.all(
+        submitted.map((e) =>
+          updateDoc(doc(db, 'timeEntries', e.id), {
+            status: 'approved',
+            approvedAt: serverTimestamp(),
+            reviewedAt: serverTimestamp(),
+            reviewedBy: user?.uid,
+            updatedAt: serverTimestamp(),
+          }),
+        ),
+      )
+      await load()
+    } catch {
+      setError('Failed to approve entries.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleReject = async (id: string) => {
-    if (!rejectReason.trim()) return
+    const reason = rejectReasons[id]?.trim()
+    if (!reason) return
     setBusy(true)
-    await updateDoc(doc(db, 'timeEntries', id), {
-      status: 'rejected',
-      rejectionReason: rejectReason.trim(),
-      rejectedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    })
-    setRejectReason('')
-    await load()
-    setBusy(false)
-  }
-
-  const handleReturnToDraft = async (id: string) => {
-    setBusy(true)
-    await updateDoc(doc(db, 'timeEntries', id), {
-      status: 'draft',
-      rejectionReason: null,
-      updatedAt: serverTimestamp(),
-    })
-    await load()
-    setBusy(false)
-  }
-
-  const handleEdit = async (entry: TimeEntry) => {
-    if (editReason.trim().length < 10) return
-    const parsed = parseEditRows(editRows)
-    if (!parsed.ok) return
-    setBusy(true)
-    const previousPunches = getPunches(entry)
-    const historyEntry = {
-      editedAt: Timestamp.now(),
-      editedBy: user!.uid,
-      editedByName: profile!.displayName,
-      reason: editReason.trim(),
-      previousPunches: serializePunchesForHistory(previousPunches),
-      newPunches: serializePunchesForHistory(parsed.punches),
+    setError('')
+    try {
+      await updateDoc(doc(db, 'timeEntries', id), {
+        status: 'rejected',
+        rejectionReason: reason,
+        rejectedAt: serverTimestamp(),
+        reviewedAt: serverTimestamp(),
+        reviewedBy: user?.uid,
+        updatedAt: serverTimestamp(),
+      })
+      setRejectReasons((current) => {
+        const next = { ...current }
+        delete next[id]
+        return next
+      })
+      await load()
+    } catch {
+      setError('Failed to reject entry.')
+    } finally {
+      setBusy(false)
     }
-    await updateDoc(doc(db, 'timeEntries', entry.id), {
-      punches: punchesToFirestore(parsed.punches),
-      clockIn: null,
-      clockOut: null,
-      punchSource: 'manual_edit',
-      editHistory: [...(entry.editHistory ?? []), historyEntry],
-      updatedAt: serverTimestamp(),
-    })
-    setEditingId(null)
-    setEditReason('')
-    await load()
-    setBusy(false)
-  }
-
-  const startEdit = (entry: TimeEntry) => {
-    setEditingId(entry.id)
-    setEditRows(punchesToEditRows(entry))
-    setEditReason('')
-  }
-
-  const updateEditRow = (index: number, field: 'clockIn' | 'clockOut', value: string) => {
-    setEditRows((rows) => rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)))
-  }
-
-  const addEditRow = () => {
-    setEditRows((rows) => [...rows, { clockIn: '', clockOut: '' }])
-  }
-
-  const removeEditRow = (index: number) => {
-    setEditRows((rows) => (rows.length <= 1 ? rows : rows.filter((_, i) => i !== index)))
-  }
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return
-    setBusy(true)
-    await deleteDoc(doc(db, 'timeEntries', deleteTarget.id))
-    setDeleteTarget(null)
-    await load()
-    setBusy(false)
   }
 
   if (loading) return <LoadingSpinner />
@@ -175,7 +122,7 @@ export function TimeReviewPage() {
   return (
     <div>
       <h1 className="page-title">Time Review</h1>
-      <p className="page-subtitle">Approve, reject, or edit employee time entries.</p>
+      <p className="page-subtitle">Approve or reject employee time entries.</p>
 
       <div className="mt-6 flex flex-wrap items-center gap-2">
         <button
@@ -199,12 +146,19 @@ export function TimeReviewPage() {
         )}
       </div>
 
+      {error && (
+        <div role="alert" className="mt-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+          {error}
+        </div>
+      )}
+
       <div className="mt-8 space-y-4">
         {entries.length === 0 ? (
           <p className="text-slate-600">No entries to review.</p>
         ) : (
           entries.map((e) => {
             const punches = getPunches(e)
+            const rejectReason = rejectReasons[e.id] ?? ''
             return (
               <div key={e.id} className="card">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -214,6 +168,10 @@ export function TimeReviewPage() {
                   </div>
                   <StatusBadge status={e.status} />
                 </div>
+
+                {e.rejectionReason && (
+                  <p className="mt-2 text-sm text-red-700">Rejected: {e.rejectionReason}</p>
+                )}
 
                 {punches.length === 0 ? (
                   <p className="mt-2 text-sm text-slate-600">No sessions recorded.</p>
@@ -234,76 +192,39 @@ export function TimeReviewPage() {
                   </ul>
                 )}
 
-                {editingId === e.id ? (
-                  <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
-                    {editRows.map((row, index) => (
-                      <div key={index} className="space-y-2 rounded-lg border border-slate-200 p-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-slate-600">Session {index + 1}</span>
-                          {editRows.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeEditRow(index)}
-                              className="text-xs text-red-600 hover:underline"
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                        <input
-                          type="datetime-local"
-                          className="input-field"
-                          value={row.clockIn}
-                          onChange={(ev) => updateEditRow(index, 'clockIn', ev.target.value)}
-                        />
-                        <input
-                          type="datetime-local"
-                          className="input-field"
-                          value={row.clockOut}
-                          onChange={(ev) => updateEditRow(index, 'clockOut', ev.target.value)}
-                        />
-                      </div>
-                    ))}
-                    <button type="button" onClick={addEditRow} className="btn-secondary text-xs">
-                      Add session
+                {e.status === 'submitted' && (
+                  <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => handleApprove(e.id)}
+                      disabled={busy}
+                      className="btn-primary text-xs"
+                    >
+                      Approve
                     </button>
-                    <textarea
-                      className="input-field min-h-16"
-                      placeholder="Reason (min 10 chars)"
-                      value={editReason}
-                      onChange={(ev) => setEditReason(ev.target.value)}
-                    />
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => handleEdit(e)} disabled={busy} className="btn-primary text-xs">Save</button>
-                      <button type="button" onClick={() => setEditingId(null)} className="btn-secondary text-xs">Cancel</button>
+                    <div className="min-w-[12rem] flex-1">
+                      <label htmlFor={`reject-${e.id}`} className="sr-only">
+                        Rejection reason for {e.employeeName}
+                      </label>
+                      <input
+                        id={`reject-${e.id}`}
+                        type="text"
+                        placeholder="Rejection reason (required)"
+                        className="input-field text-xs"
+                        value={rejectReason}
+                        onChange={(ev) =>
+                          setRejectReasons((current) => ({ ...current, [e.id]: ev.target.value }))
+                        }
+                      />
                     </div>
-                  </div>
-                ) : (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {e.status === 'submitted' && (
-                      <>
-                        <button type="button" onClick={() => handleApprove(e.id)} disabled={busy} className="btn-primary text-xs">Approve</button>
-                        <input
-                          type="text"
-                          placeholder="Rejection reason"
-                          className="input-field max-w-xs text-xs"
-                          value={rejectReason}
-                          onChange={(ev) => setRejectReason(ev.target.value)}
-                        />
-                        <button type="button" onClick={() => handleReject(e.id)} disabled={busy} className="btn-danger text-xs">Reject</button>
-                      </>
-                    )}
-                    {e.status === 'rejected' && (
-                      <button type="button" onClick={() => handleReturnToDraft(e.id)} disabled={busy} className="btn-secondary text-xs">
-                        Return to Draft
-                      </button>
-                    )}
-                    <button type="button" onClick={() => startEdit(e)} disabled={busy} className="btn-secondary text-xs">Edit</button>
-                    {canDeleteEntry(e) && (
-                      <button type="button" onClick={() => setDeleteTarget(e)} disabled={busy} className="btn-danger text-xs">
-                        Delete
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleReject(e.id)}
+                      disabled={busy || !rejectReason.trim()}
+                      className="btn-danger text-xs"
+                    >
+                      Reject
+                    </button>
                   </div>
                 )}
               </div>
@@ -311,21 +232,6 @@ export function TimeReviewPage() {
           })
         )}
       </div>
-
-      <ConfirmDialog
-        open={deleteTarget !== null}
-        title="Delete time entry?"
-        description={
-          deleteTarget
-            ? `This will permanently remove all sessions for ${deleteTarget.employeeName} on ${formatDisplayDate(deleteTarget.workDate)}.`
-            : ''
-        }
-        confirmLabel="Delete"
-        variant="danger"
-        busy={busy}
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
     </div>
   )
 }

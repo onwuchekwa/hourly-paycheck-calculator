@@ -15,8 +15,21 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { apiPost } from '../../lib/api'
 import { db } from '../../lib/firebase'
-import type { PayPeriod, PayrollRun, TimeEntry, UserProfile, CompanySettings } from '../../lib/types'
-import { buildPayrollSnapshot } from '../../lib/payroll'
+import type {
+  PayPeriod,
+  PayrollRun,
+  PayrollRunScope,
+  PayrollRunType,
+  TimeEntry,
+  UserProfile,
+  CompanySettings,
+} from '../../lib/types'
+import {
+  buildPayrollSnapshot,
+  collectPaidTimeEntryIdsForPeriod,
+  excludePaidTimeEntries,
+  formatPayrollRunLabel,
+} from '../../lib/payroll'
 import { getEmployeeRates } from '../../lib/rates'
 import { formatCurrency, formatDecimalHours } from '../../lib/utils'
 import { getCallableErrorMessage } from '../../lib/errors'
@@ -25,11 +38,20 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
+interface EmployeeOption {
+  uid: string
+  displayName: string
+}
+
 export function PayrollRunsPage() {
   const { user } = useAuth()
   const [periods, setPeriods] = useState<PayPeriod[]>([])
   const [runs, setRuns] = useState<PayrollRun[]>([])
+  const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [selectedPeriodId, setSelectedPeriodId] = useState('')
+  const [runType, setRunType] = useState<PayrollRunType>('regular')
+  const [employeeScope, setEmployeeScope] = useState<PayrollRunScope>('all')
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([])
   const [preview, setPreview] = useState<PayrollRun | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -49,6 +71,18 @@ export function PayrollRunsPage() {
       query(collection(db, 'payrollRuns'), orderBy('createdAt', 'desc')),
     )
     setRuns(runSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayrollRun))
+
+    const empSnap = await getDocs(
+      query(collection(db, 'users'), where('role', '==', 'employee'), where('active', '==', true)),
+    )
+    setEmployees(
+      empSnap.docs
+        .map((d) => ({
+          uid: d.id,
+          displayName: (d.data() as UserProfile).displayName,
+        }))
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    )
     setLoading(false)
   }
 
@@ -56,8 +90,19 @@ export function PayrollRunsPage() {
     void load()
   }, [])
 
+  const toggleEmployee = (uid: string) => {
+    setSelectedEmployeeIds((current) =>
+      current.includes(uid) ? current.filter((id) => id !== uid) : [...current, uid],
+    )
+  }
+
   const handlePreview = async () => {
     if (!selectedPeriodId) return
+    if (employeeScope === 'selected' && selectedEmployeeIds.length === 0) {
+      setError('Select at least one employee.')
+      return
+    }
+
     setBusy(true)
     setError('')
     try {
@@ -72,52 +117,62 @@ export function PayrollRunsPage() {
           where('status', '==', 'approved'),
         ),
       )
-      const entries = entriesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as TimeEntry)
+      let entries = entriesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as TimeEntry)
 
-      const empSnap = await getDocs(
-        query(collection(db, 'users'), where('role', '==', 'employee'), where('active', '==', true)),
-      )
-      const employees = empSnap.docs.map((d) => ({
-        uid: d.id,
-        displayName: (d.data() as UserProfile).displayName,
-        email: (d.data() as UserProfile).email,
-      }))
+      if (runType === 'supplemental') {
+        const paidEntryIds = collectPaidTimeEntryIdsForPeriod(runs, period.id)
+        entries = excludePaidTimeEntries(entries, paidEntryIds)
+      }
+
+      let targetEmployees = employees
+      if (employeeScope === 'selected') {
+        targetEmployees = employees.filter((emp) => selectedEmployeeIds.includes(emp.uid))
+        entries = entries.filter((entry) => selectedEmployeeIds.includes(entry.employeeId))
+      }
 
       const ratesByEmployee = new Map<string, Awaited<ReturnType<typeof getEmployeeRates>>>()
-      for (const emp of employees) {
+      for (const emp of targetEmployees) {
         ratesByEmployee.set(emp.uid, await getEmployeeRates(emp.uid))
       }
 
       const lines = buildPayrollSnapshot(
-        employees.map((e) => ({ uid: e.uid, displayName: e.displayName })),
+        targetEmployees.map((e) => ({ uid: e.uid, displayName: e.displayName })),
         entries,
         ratesByEmployee,
       )
 
+      if (lines.length === 0) {
+        setError(
+          runType === 'supplemental'
+            ? 'No unpaid approved hours found for the selected employees in this period.'
+            : 'No approved hours found for the selected employees in this period.',
+        )
+        return
+      }
+
       const totalGross = lines.reduce((s, l) => s + l.grossPay, 0)
       const totalHours = lines.reduce((s, l) => s + l.totalHours, 0)
-
-      const runRef = await addDoc(collection(db, 'payrollRuns'), {
+      const runPayload = {
         payPeriodId: period.id,
         payPeriodStart: period.startDate,
         payPeriodEnd: period.endDate,
-        status: 'preview',
+        status: 'preview' as const,
+        runType,
+        scope: employeeScope,
+        ...(employeeScope === 'selected' ? { employeeIds: [...selectedEmployeeIds] } : {}),
         entries: lines,
         totalGross: Math.round(totalGross * 100) / 100,
         totalHours: Math.round(totalHours * 100) / 100,
         createdAt: serverTimestamp(),
         createdBy: user?.uid,
-      })
+      }
+
+      const runRef = await addDoc(collection(db, 'payrollRuns'), runPayload)
 
       const previewRun: PayrollRun = {
         id: runRef.id,
-        payPeriodId: period.id,
-        payPeriodStart: period.startDate,
-        payPeriodEnd: period.endDate,
-        status: 'preview',
-        entries: lines,
-        totalGross: Math.round(totalGross * 100) / 100,
-        totalHours: Math.round(totalHours * 100) / 100,
+        ...runPayload,
+        createdAt: undefined,
       }
       setPreview(previewRun)
       await load()
@@ -213,6 +268,16 @@ export function PayrollRunsPage() {
     }
   }
 
+  const finalizeDescription = () => {
+    const count = finalizeTarget?.entries.length ?? 0
+    const employeeLabel = count === 1 ? '1 employee' : `${count} employees`
+    const runLabel = finalizeTarget?.runType === 'supplemental' ? 'supplemental payroll' : 'payroll run'
+    if (emailOnFinalize) {
+      return `This will generate pay slips for ${employeeLabel} in this ${runLabel} and email them. This action cannot be undone.`
+    }
+    return `This will generate pay slips for ${employeeLabel} in this ${runLabel}. This action cannot be undone.`
+  }
+
   if (loading) return <LoadingSpinner />
 
   const displayRun = preview ?? runs.find((r) => r.status === 'preview') ?? null
@@ -222,7 +287,7 @@ export function PayrollRunsPage() {
       <h1 className="page-title">Payroll Runs</h1>
       <p className="page-subtitle">Preview and finalize payroll for a pay period.</p>
 
-      <div className="card mt-6 max-w-lg space-y-4">
+      <div className="card mt-6 max-w-lg space-y-5">
         <div>
           <label htmlFor="period" className="label-field">Pay period</label>
           <select
@@ -239,7 +304,94 @@ export function PayrollRunsPage() {
             ))}
           </select>
         </div>
-        <button type="button" onClick={handlePreview} disabled={busy || !selectedPeriodId} className="btn-primary">
+
+        <fieldset className="space-y-2">
+          <legend className="label-field">Run type</legend>
+          <label className="flex items-start gap-2 text-sm text-slate-700">
+            <input
+              type="radio"
+              name="runType"
+              className="mt-1"
+              checked={runType === 'regular'}
+              onChange={() => setRunType('regular')}
+            />
+            <span>
+              <span className="font-medium">Regular payroll</span>
+              <span className="mt-0.5 block text-slate-500">
+                Include all approved hours for the selected employees in this period.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm text-slate-700">
+            <input
+              type="radio"
+              name="runType"
+              className="mt-1"
+              checked={runType === 'supplemental'}
+              onChange={() => setRunType('supplemental')}
+            />
+            <span>
+              <span className="font-medium">Supplemental payroll</span>
+              <span className="mt-0.5 block text-slate-500">
+                Catch up employees missed in an earlier run by paying only hours not yet included in a finalized payroll for this period.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+
+        <fieldset className="space-y-2">
+          <legend className="label-field">Employees</legend>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="radio"
+              name="employeeScope"
+              checked={employeeScope === 'all'}
+              onChange={() => setEmployeeScope('all')}
+            />
+            All active employees
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="radio"
+              name="employeeScope"
+              checked={employeeScope === 'selected'}
+              onChange={() => setEmployeeScope('selected')}
+            />
+            Selected employees
+          </label>
+        </fieldset>
+
+        {employeeScope === 'selected' && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm font-medium text-slate-700">Choose employees</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Select one employee for a single-employee run, or multiple for a partial run.
+            </p>
+            <div className="mt-3 max-h-48 space-y-2 overflow-y-auto">
+              {employees.length === 0 ? (
+                <p className="text-sm text-slate-500">No active employees found.</p>
+              ) : (
+                employees.map((emp) => (
+                  <label key={emp.uid} className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={selectedEmployeeIds.includes(emp.uid)}
+                      onChange={() => toggleEmployee(emp.uid)}
+                    />
+                    {emp.displayName}
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={handlePreview}
+          disabled={busy || !selectedPeriodId || (employeeScope === 'selected' && selectedEmployeeIds.length === 0)}
+          className="btn-primary"
+        >
           Generate Preview
         </button>
         {error && <AlertBanner variant="error">{error}</AlertBanner>}
@@ -249,11 +401,15 @@ export function PayrollRunsPage() {
       {displayRun && (
         <div className="card mt-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h2 className="font-semibold">
-                {displayRun.payPeriodStart} – {displayRun.payPeriodEnd}
-              </h2>
-              <StatusBadge status={displayRun.status} />
+            <div className="space-y-2">
+              <h2 className="font-semibold">{formatPayrollRunLabel(displayRun)}</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge status={displayRun.status} />
+                {displayRun.runType === 'supplemental' && <StatusBadge status="supplemental" />}
+                {displayRun.scope === 'selected' && displayRun.employeeIds?.length === 1 && (
+                  <span className="text-xs text-slate-500">Single employee</span>
+                )}
+              </div>
             </div>
             {displayRun.status === 'preview' && (
               <div className="flex flex-col items-end gap-3">
@@ -308,8 +464,16 @@ export function PayrollRunsPage() {
         <h2 className="text-lg font-semibold">Past Runs</h2>
         <ul className="mt-4 space-y-2">
           {runs.filter((r) => r.status === 'finalized').map((r) => (
-            <li key={r.id} className="card flex justify-between py-3">
-              <span>{r.payPeriodStart} – {r.payPeriodEnd}</span>
+            <li key={r.id} className="card flex flex-wrap items-center justify-between gap-2 py-3">
+              <div>
+                <p>{formatPayrollRunLabel(r)}</p>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {r.runType === 'supplemental' && <StatusBadge status="supplemental" />}
+                  {r.scope === 'selected' && r.employeeIds?.length === 1 && (
+                    <span className="text-xs text-slate-500">Single employee</span>
+                  )}
+                </div>
+              </div>
               <span className="font-semibold">{formatCurrency(r.totalGross)}</span>
               <Link to={`/admin/pay-slips?run=${r.id}`} className="text-brand-600 text-sm hover:underline">
                 View slips
@@ -322,11 +486,7 @@ export function PayrollRunsPage() {
       <ConfirmDialog
         open={finalizeTarget !== null}
         title="Finalize payroll?"
-        description={
-          emailOnFinalize
-            ? 'This will generate pay slips and email them to all employees. This action cannot be undone.'
-            : 'This will generate pay slips for all employees. This action cannot be undone.'
-        }
+        description={finalizeDescription()}
         confirmLabel="Finalize"
         busy={busy}
         onConfirm={() => finalizeTarget && void handleFinalize(finalizeTarget)}

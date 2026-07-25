@@ -15,7 +15,7 @@ import type { TimeEntry } from '../../lib/types'
 import {
   autoCloseStalePunches,
   canEditEntry,
-  canSubmitEntry,
+  canSubmitForReview,
   createClockInTimestamp,
   createClockOutTimestamp,
   fetchEmployeeEntries,
@@ -189,7 +189,7 @@ export function TimesheetPage() {
   }
 
   const handleSubmit = async () => {
-    if (!normalizedEntry || !canSubmitEntry(normalizedEntry)) {
+    if (!normalizedEntry || !canSubmitForReview(normalizedEntry)) {
       setError('Complete all sessions before submitting.')
       return
     }
@@ -199,6 +199,8 @@ export function TimesheetPage() {
       await updateDoc(doc(db, 'timeEntries', docId), {
         status: 'submitted',
         submittedAt: serverTimestamp(),
+        rejectionReason: null,
+        rejectedAt: null,
         updatedAt: serverTimestamp(),
       })
       await loadEntry()
@@ -448,9 +450,9 @@ export function TimesheetPage() {
                   Clock Out{openOnThisDay ? '' : ' (open session)'}
                 </button>
               )}
-              {normalizedEntry && canSubmitEntry(normalizedEntry) && entry?.status === 'draft' && (
+              {normalizedEntry && canSubmitForReview(normalizedEntry) && (
                 <button type="button" onClick={handleSubmit} disabled={busy} className="btn-secondary">
-                  Submit for Review
+                  {entry?.status === 'rejected' ? 'Resubmit for Review' : 'Submit for Review'}
                 </button>
               )}
             </div>

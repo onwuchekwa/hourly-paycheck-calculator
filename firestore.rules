@@ -76,7 +76,11 @@ service cloud.firestore {
           resource.data.status in ['draft', 'submitted']
         )
       );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (
+        isEmployee() &&
+        resource.data.employeeId == request.auth.uid &&
+        resource.data.status in ['draft', 'submitted']
+      );
     }
 
     match /employeeRates/{rateId} {

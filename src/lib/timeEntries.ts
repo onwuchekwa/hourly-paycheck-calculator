@@ -254,3 +254,77 @@ export function canSubmitEntry(entry: TimeEntry): boolean {
   if (getOpenPunchIndex(entry) >= 0) return false
   return hasCompletedPunch(entry)
 }
+
+export function canDeleteEntry(entry: TimeEntry): boolean {
+  return entry.status === 'draft' || entry.status === 'submitted'
+}
+
+export function canEditEntry(entry: TimeEntry): boolean {
+  return entry.status === 'draft' || entry.status === 'submitted'
+}
+
+export function punchToEditRow(punch: TimePunch): EditPunchRow {
+  return {
+    clockIn: timestampToInputValue(punch.clockIn),
+    clockOut: punch.clockOut ? timestampToInputValue(punch.clockOut) : '',
+  }
+}
+
+export function parseSinglePunchEdit(
+  row: EditPunchRow,
+  allowOpenOut: boolean,
+): { ok: true; punch: TimePunch } | { ok: false; error: string } {
+  if (!row.clockIn.trim()) {
+    return { ok: false, error: 'Clock in is required.' }
+  }
+  const inDate = new Date(row.clockIn)
+  if (Number.isNaN(inDate.getTime())) {
+    return { ok: false, error: 'Invalid clock in time.' }
+  }
+
+  if (!row.clockOut.trim()) {
+    if (!allowOpenOut) {
+      return { ok: false, error: 'Clock out is required.' }
+    }
+    return { ok: true, punch: { clockIn: Timestamp.fromDate(inDate), clockOut: null } }
+  }
+
+  const outDate = new Date(row.clockOut)
+  if (Number.isNaN(outDate.getTime())) {
+    return { ok: false, error: 'Invalid clock out time.' }
+  }
+  if (outDate <= inDate) {
+    return { ok: false, error: 'Clock out must be after clock in.' }
+  }
+
+  return {
+    ok: true,
+    punch: {
+      clockIn: Timestamp.fromDate(inDate),
+      clockOut: Timestamp.fromDate(outDate),
+    },
+  }
+}
+
+export function replacePunchAtIndex(
+  entry: TimeEntry,
+  index: number,
+  punch: TimePunch,
+): { ok: true; punches: TimePunch[] } | { ok: false; error: string } {
+  const punches = [...getPunches(entry)]
+  if (index < 0 || index >= punches.length) {
+    return { ok: false, error: 'Session not found.' }
+  }
+
+  punches[index] = punch
+
+  const completed = punches.filter((p) => p.clockIn && p.clockOut)
+  const sorted = [...completed].sort((a, b) => a.clockIn.toMillis() - b.clockIn.toMillis())
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].clockIn.toMillis() < sorted[i - 1].clockOut!.toMillis()) {
+      return { ok: false, error: 'Sessions cannot overlap.' }
+    }
+  }
+
+  return { ok: true, punches }
+}

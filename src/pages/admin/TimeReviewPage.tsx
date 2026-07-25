@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   collection,
+  deleteDoc,
   getDocs,
   query,
   where,
@@ -14,6 +15,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { TimeEntry } from '../../lib/types'
 import {
+  canDeleteEntry,
   formatEntryDuration,
   formatPunchDuration,
   getPunches,
@@ -27,6 +29,7 @@ import {
 import { formatDisplayDate, formatTime } from '../../lib/utils'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 
 export function TimeReviewPage() {
   const { profile, user } = useAuth()
@@ -38,6 +41,7 @@ export function TimeReviewPage() {
   const [editReason, setEditReason] = useState('')
   const [rejectReason, setRejectReason] = useState('')
   const [busy, setBusy] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<TimeEntry | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -155,6 +159,15 @@ export function TimeReviewPage() {
 
   const removeEditRow = (index: number) => {
     setEditRows((rows) => (rows.length <= 1 ? rows : rows.filter((_, i) => i !== index)))
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setBusy(true)
+    await deleteDoc(doc(db, 'timeEntries', deleteTarget.id))
+    setDeleteTarget(null)
+    await load()
+    setBusy(false)
   }
 
   if (loading) return <LoadingSpinner />
@@ -286,6 +299,11 @@ export function TimeReviewPage() {
                       </button>
                     )}
                     <button type="button" onClick={() => startEdit(e)} disabled={busy} className="btn-secondary text-xs">Edit</button>
+                    {canDeleteEntry(e) && (
+                      <button type="button" onClick={() => setDeleteTarget(e)} disabled={busy} className="btn-danger text-xs">
+                        Delete
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -293,6 +311,21 @@ export function TimeReviewPage() {
           })
         )}
       </div>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete time entry?"
+        description={
+          deleteTarget
+            ? `This will permanently remove all sessions for ${deleteTarget.employeeName} on ${formatDisplayDate(deleteTarget.workDate)}.`
+            : ''
+        }
+        confirmLabel="Delete"
+        variant="danger"
+        busy={busy}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

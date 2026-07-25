@@ -10,9 +10,10 @@ import {
 import { doc, getDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import type { CompanySettings } from '../lib/types'
+import { DEFAULT_COMPANY_NAME } from '../lib/companyBranding'
 
 const DEFAULT_SETTINGS: CompanySettings = {
-  companyName: 'Company',
+  companyName: DEFAULT_COMPANY_NAME,
   address: '',
   phone: '',
   email: '',

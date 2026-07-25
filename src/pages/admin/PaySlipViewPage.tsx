@@ -4,14 +4,19 @@ import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { apiPost } from '../../lib/api'
 import { db } from '../../lib/firebase'
 import type { PaySlip } from '../../lib/types'
+import { resolveCompanyField, resolveCompanyName } from '../../lib/companyBranding'
 import { getCallableErrorMessage } from '../../lib/errors'
+import { formatDisplayDate } from '../../lib/utils'
+import { useCompanySettings } from '../../contexts/CompanySettingsContext'
 import { AlertBanner } from '../../components/AlertBanner'
 import { PaySlipDocument } from '../../components/PaySlipDocument'
+import { PaySlipSummaryTable } from '../../components/PaySlipSummaryTable'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
 export function PaySlipViewPage() {
   const [searchParams] = useSearchParams()
   const runId = searchParams.get('run')
+  const { settings } = useCompanySettings()
   const [slips, setSlips] = useState<PaySlip[]>([])
   const [selected, setSelected] = useState<PaySlip | null>(null)
   const [loading, setLoading] = useState(true)
@@ -20,15 +25,21 @@ export function PaySlipViewPage() {
   const [messageVariant, setMessageVariant] = useState<'success' | 'error'>('success')
   const [loadError, setLoadError] = useState('')
 
+  const companyName = resolveCompanyName(slips[0]?.companyName, settings.companyName)
+  const companyAddress = resolveCompanyField(slips[0]?.companyAddress, settings.address)
+  const companyPhone = resolveCompanyField(slips[0]?.companyPhone, settings.phone)
+
   useEffect(() => {
     const load = async () => {
       try {
         const constraints = runId ? [where('payrollRunId', '==', runId)] : []
         const q = query(collection(db, 'paySlips'), ...constraints, orderBy('paySlipNumber', 'desc'))
         const snap = await getDocs(q)
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PaySlip)
+        const list = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as PaySlip)
+          .sort((a, b) => a.employeeName.localeCompare(b.employeeName))
         setSlips(list)
-        if (list.length > 0) setSelected(list[0])
+        setSelected(null)
       } catch {
         setLoadError('Failed to load pay slips.')
       } finally {
@@ -37,6 +48,11 @@ export function PaySlipViewPage() {
     }
     void load()
   }, [runId])
+
+  const handleSelect = (slip: PaySlip) => {
+    setSelected((current) => (current?.id === slip.id ? null : slip))
+    setMessage('')
+  }
 
   const handleEmail = async () => {
     if (!selected) return
@@ -56,52 +72,59 @@ export function PaySlipViewPage() {
 
   if (loading) return <LoadingSpinner />
 
+  const periodLabel =
+    slips.length > 0
+      ? `${formatDisplayDate(slips[0].payPeriodStart)} – ${formatDisplayDate(slips[0].payPeriodEnd)}`
+      : null
+
   return (
     <div>
       <h1 className="page-title">Pay Slips</h1>
-      <p className="page-subtitle">View and email employee pay slips.</p>
+      <p className="page-subtitle">
+        {runId
+          ? 'Payroll run summary by employee. Open details to print or email an individual pay slip.'
+          : 'Summary of all generated pay slips. Open details to print or email an individual pay slip.'}
+      </p>
 
       {loadError && <AlertBanner variant="error" className="mt-4">{loadError}</AlertBanner>}
 
       {slips.length === 0 && !loadError ? (
         <p className="mt-8 text-slate-600">No pay slips found.</p>
       ) : (
-        <div className="mt-8 grid gap-8 lg:grid-cols-3">
-          <ul className="space-y-2">
-            {slips.map((s) => (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelected(s)}
-                  className={`w-full rounded-lg border px-4 py-3 text-left text-sm transition ${
-                    selected?.id === s.id
-                      ? 'border-brand-500 bg-brand-50'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <p className="font-medium">{s.paySlipNumber}</p>
-                  <p className="text-slate-600">{s.employeeName}</p>
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="lg:col-span-2">
-            {selected && (
-              <>
-                <div className="no-print mb-4 flex items-center gap-3">
-                  <button type="button" onClick={handleEmail} disabled={emailing} className="btn-secondary">
-                    {emailing ? 'Sending…' : 'Email Pay Slip'}
-                  </button>
-                  {message && (
-                    <AlertBanner variant={messageVariant} className="flex-1">
-                      {message}
-                    </AlertBanner>
-                  )}
-                </div>
-                <PaySlipDocument paySlip={selected} />
-              </>
-            )}
+        <div className="mt-8 space-y-6">
+          <div className="card">
+            <div className="border-b border-slate-200 pb-4 mb-4">
+              <h2 className="text-xl font-bold text-slate-900">{companyName}</h2>
+              {companyAddress && (
+                <p className="mt-1 whitespace-pre-line text-sm text-slate-600">{companyAddress}</p>
+              )}
+              {companyPhone && <p className="mt-1 text-sm text-slate-600">{companyPhone}</p>}
+              {periodLabel && (
+                <p className="mt-2 text-sm font-medium text-brand-700">Pay period: {periodLabel}</p>
+              )}
+            </div>
+
+            <PaySlipSummaryTable slips={slips} selectedId={selected?.id} onSelect={handleSelect} />
           </div>
+
+          {selected && (
+            <div>
+              <div className="no-print mb-4 flex flex-wrap items-center gap-3">
+                <h2 className="text-lg font-semibold text-slate-900">
+                  {selected.employeeName} — {selected.paySlipNumber}
+                </h2>
+                <button type="button" onClick={handleEmail} disabled={emailing} className="btn-secondary">
+                  {emailing ? 'Sending…' : 'Email Pay Slip'}
+                </button>
+                {message && (
+                  <AlertBanner variant={messageVariant} className="flex-1">
+                    {message}
+                  </AlertBanner>
+                )}
+              </div>
+              <PaySlipDocument paySlip={selected} />
+            </div>
+          )}
         </div>
       )}
     </div>

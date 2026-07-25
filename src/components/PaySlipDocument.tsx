@@ -3,6 +3,7 @@ import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import type { PaySlip } from '../lib/types'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
+import { resolveCompanyField, resolveCompanyName } from '../lib/companyBranding'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
 
 interface PaySlipDocumentProps {
@@ -12,11 +13,11 @@ interface PaySlipDocumentProps {
 
 export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocumentProps) {
   const ref = useRef<HTMLDivElement>(null)
-  const { settings } = useCompanySettings()
+  const { settings, appTitle } = useCompanySettings()
 
-  const companyName = paySlip.companyName || settings.companyName
-  const companyAddress = paySlip.companyAddress || settings.address
-  const companyPhone = paySlip.companyPhone || settings.phone
+  const companyName = resolveCompanyName(paySlip.companyName, settings.companyName || appTitle)
+  const companyAddress = resolveCompanyField(paySlip.companyAddress, settings.address)
+  const companyPhone = resolveCompanyField(paySlip.companyPhone, settings.phone)
 
   const handlePrint = () => window.print()
 

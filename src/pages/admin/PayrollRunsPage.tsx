@@ -17,14 +17,15 @@ import { useAuth } from '../../contexts/AuthContext'
 import { apiPost } from '../../lib/api'
 import { db } from '../../lib/firebase'
 import type {
+  CompanySettings,
   PayPeriod,
   PayrollRun,
   PayrollRunScope,
   PayrollRunType,
   TimeEntry,
   UserProfile,
-  CompanySettings,
 } from '../../lib/types'
+import { DEFAULT_COMPANY_NAME } from '../../lib/companyBranding'
 import {
   buildPayrollSnapshot,
   collectPaidTimeEntryIdsForPeriod,
@@ -209,8 +210,9 @@ export function PayrollRunsPage() {
       const payrollSettingsRef = doc(db, 'settings', 'payroll')
       const settingsSnap = await getDoc(settingsRef)
       const payrollSnap = await getDoc(payrollSettingsRef)
-      const settings = (settingsSnap.data() ?? { companyName: 'Company' }) as CompanySettings
+      const settings = (settingsSnap.data() ?? {}) as CompanySettings
       const payrollSettings = payrollSnap.data() ?? {}
+      const companyName = settings.companyName?.trim() || DEFAULT_COMPANY_NAME
 
       const year = new Date().getFullYear()
       let counter = (payrollSettings.lastPaySlipNumber as number) ?? 0
@@ -245,7 +247,7 @@ export function PayrollRunsPage() {
           grossPay: line.grossPay,
           issueDate: run.payPeriodEnd,
           payDate: run.payPeriodEnd,
-          companyName: settings.companyName,
+          companyName,
           companyAddress: settings.address ?? '',
           companyPhone: settings.phone ?? '',
           lineItems: line.dayBreakdown,

@@ -95,13 +95,21 @@ employeesRouter.post('/', requireAuth, async (req, res, next) => {
         companyName: company.companyName,
       })
 
-      await sendMail({
-        to: normalizedEmail,
-        replyTo: company.email,
-        message: welcomeMessage,
-      })
+      let mailWarning: string | undefined
+      try {
+        await sendMail({
+          to: normalizedEmail,
+          replyTo: company.email,
+          message: welcomeMessage,
+        })
+      } catch (mailErr) {
+        mailWarning =
+          mailErr instanceof Error
+            ? mailErr.message
+            : 'Welcome email could not be sent. Configure SMTP in server/.env.'
+      }
 
-      res.json({ uid: userRecord!.uid, email: normalizedEmail })
+      res.json({ uid: userRecord!.uid, email: normalizedEmail, mailWarning })
     } catch (err) {
       await auth.deleteUser(userRecord!.uid).catch(() => undefined)
       if (err instanceof ApiError) throw err

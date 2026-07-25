@@ -11,7 +11,7 @@ import {
   where,
 } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
-import { apiPost } from '../../lib/api'
+import { apiPost, isApiConfigured } from '../../lib/api'
 import { db } from '../../lib/firebase'
 import type { EmployeeRate, UserProfile } from '../../lib/types'
 import { formatCurrency, todayString } from '../../lib/utils'
@@ -79,12 +79,18 @@ export function EmployeesPage() {
     }
     setSubmitting(true)
     try {
-      await apiPost<{ uid: string; email: string }>('/api/employees', {
+      const result = await apiPost<{ uid: string; email: string; mailWarning?: string }>('/api/employees', {
         displayName: displayName.trim(),
         email: email.trim(),
         hourlyRate: rate,
       })
-      setSuccess(`Employee created. A welcome email with sign-in instructions was sent to ${email.trim()}.`)
+      if (result.mailWarning) {
+        setSuccess(
+          `Employee created, but the welcome email could not be sent: ${result.mailWarning} Share sign-in credentials with them manually.`,
+        )
+      } else {
+        setSuccess(`Employee created. A welcome email with sign-in instructions was sent to ${email.trim()}.`)
+      }
       setDisplayName('')
       setEmail('')
       setHourlyRate('')
@@ -171,6 +177,15 @@ export function EmployeesPage() {
           {showForm ? 'Cancel' : 'Add Employee'}
         </button>
       </div>
+
+      {!isApiConfigured() && (
+        <AlertBanner variant="error" className="mt-6">
+          Employee creation requires the Node API. Set <code className="rounded bg-white px-1">VITE_API_URL</code> in{' '}
+          <code className="rounded bg-white px-1">.env</code>, run{' '}
+          <code className="rounded bg-white px-1">npm run dev:app</code>, and configure SMTP in{' '}
+          <code className="rounded bg-white px-1">server/.env</code>.
+        </AlertBanner>
+      )}
 
       <div className="mt-6">
         <label htmlFor="search" className="label-field">Search employees</label>

@@ -28,7 +28,11 @@ const CALLABLE_MESSAGES: Record<string, string> = {
 
 export function getCallableErrorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
   if (err instanceof ApiClientError) {
-    return CALLABLE_MESSAGES[err.code] ?? err.message ?? fallback
+    const generic = CALLABLE_MESSAGES[err.code]
+    if (err.message && err.message !== generic && err.message !== 'Request failed.') {
+      return err.message
+    }
+    return generic ?? err.message ?? fallback
   }
   if (err instanceof FirebaseError) {
     return CALLABLE_MESSAGES[err.code] ?? err.message ?? fallback

@@ -3,7 +3,7 @@ import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { TimeEntry } from '../../lib/types'
-import { calcHours, formatDisplayDate, formatTime } from '../../lib/utils'
+import { formatDisplayDate, formatDuration, formatTime } from '../../lib/utils'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
@@ -54,7 +54,7 @@ export function TimeHistoryPage() {
                   <td className="py-3 pr-4">{formatDisplayDate(e.workDate)}</td>
                   <td className="py-3 pr-4">{formatTime(e.clockIn)}</td>
                   <td className="py-3 pr-4">{formatTime(e.clockOut)}</td>
-                  <td className="py-3 pr-4">{calcHours(e.clockIn, e.clockOut).toFixed(2)}</td>
+                  <td className="py-3 pr-4">{formatDuration(e.clockIn, e.clockOut)}</td>
                   <td className="py-3"><StatusBadge status={e.status} /></td>
                 </tr>
               ))}

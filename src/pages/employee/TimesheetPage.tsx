@@ -11,8 +11,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/firebase'
 import type { TimeEntry } from '../../lib/types'
 import {
-  calcHours,
   formatDate,
+  formatDuration,
   formatTime,
   timeEntryDocId,
   timestampToInputValue,
@@ -230,7 +230,7 @@ export function TimesheetPage() {
             <div className="col-span-2">
               <p className="text-slate-500">Hours</p>
               <p className="font-semibold text-lg">
-                {calcHours(entry?.clockIn, entry?.clockOut).toFixed(2)}
+                {formatDuration(entry?.clockIn, entry?.clockOut)}
               </p>
             </div>
           </div>

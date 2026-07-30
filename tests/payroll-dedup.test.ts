@@ -6,6 +6,7 @@ import {
   isLastFinalizedRunForPeriod,
   isUnpaidApprovedPayrollEntry,
   periodHasFinalizedRuns,
+  periodHasPayrollRuns,
   periodsDateRangesOverlap,
 } from '../src/lib/payroll'
 import type { PayPeriod, PayrollRun, TimeEntry } from '../src/lib/types'
@@ -99,6 +100,17 @@ describe('periodHasFinalizedRuns', () => {
   })
 })
 
+describe('periodHasPayrollRuns', () => {
+  it('returns true when any payroll run exists for period', () => {
+    expect(periodHasPayrollRuns(runs, 'p1')).toBe(true)
+    expect(periodHasPayrollRuns(runs, 'p3')).toBe(true)
+  })
+
+  it('returns false when no runs exist for period', () => {
+    expect(periodHasPayrollRuns(runs, 'p2')).toBe(false)
+  })
+})
+
 describe('isLastFinalizedRunForPeriod', () => {
   it('returns false when multiple finalized runs exist', () => {
     expect(isLastFinalizedRunForPeriod(runs, 'r1', 'p1')).toBe(false)
@@ -118,6 +130,11 @@ describe('findPaidPeriodsOverlappingRange', () => {
 
   it('returns empty when range does not overlap paid periods', () => {
     const found = findPaidPeriodsOverlappingRange('2026-03-01', '2026-03-15', periods, runs)
+    expect(found).toEqual([])
+  })
+
+  it('excludes the specified period from overlap results', () => {
+    const found = findPaidPeriodsOverlappingRange('2026-01-01', '2026-01-15', periods, runs, 'p1')
     expect(found).toEqual([])
   })
 })

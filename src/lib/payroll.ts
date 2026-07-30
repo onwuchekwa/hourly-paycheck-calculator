@@ -204,6 +204,10 @@ export function periodHasFinalizedRuns(runs: PayrollRun[], payPeriodId: string):
   return runs.some((run) => run.status === 'finalized' && run.payPeriodId === payPeriodId)
 }
 
+export function periodHasPayrollRuns(runs: PayrollRun[], payPeriodId: string): boolean {
+  return runs.some((run) => run.payPeriodId === payPeriodId)
+}
+
 export function isLastFinalizedRunForPeriod(
   runs: PayrollRun[],
   runId: string,
@@ -220,12 +224,14 @@ export function findPaidPeriodsOverlappingRange(
   rangeEnd: string,
   periods: PayPeriod[],
   runs: PayrollRun[],
+  excludePeriodId?: string,
 ): PayPeriod[] {
   const paidPeriodIds = new Set(
     runs.filter((run) => run.status === 'finalized').map((run) => run.payPeriodId),
   )
   return periods
     .filter((period) => paidPeriodIds.has(period.id))
+    .filter((period) => period.id !== excludePeriodId)
     .filter((period) => periodsDateRangesOverlap(rangeStart, rangeEnd, period.startDate, period.endDate))
     .sort((a, b) => a.startDate.localeCompare(b.startDate))
 }

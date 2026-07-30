@@ -4,6 +4,7 @@ import {
   getDocs,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   query,
   orderBy,
@@ -12,9 +13,11 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import type { PayPeriod, PayrollRun } from '../../lib/types'
-import { findPaidPeriodsOverlappingRange } from '../../lib/payroll'
+import { findPaidPeriodsOverlappingRange, periodHasPayrollRuns } from '../../lib/payroll'
 import { formatDisplayDate } from '../../lib/utils'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { DatePicker } from '../../components/DatePicker'
+import { IconButton, DeleteIcon, EditIcon } from '../../components/IconButton'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
@@ -26,6 +29,10 @@ export function PayPeriodsPage() {
   const [endDate, setEndDate] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null)
+  const [editStartDate, setEditStartDate] = useState('')
+  const [editEndDate, setEditEndDate] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<PayPeriod | null>(null)
 
   const load = async () => {
     const [periodSnap, runSnap] = await Promise.all([
@@ -42,6 +49,64 @@ export function PayPeriodsPage() {
   }, [])
 
   const hasOpen = periods.some((p) => p.status === 'open')
+
+  const canModifyPeriod = (period: PayPeriod) =>
+    period.status === 'open' && !periodHasPayrollRuns(runs, period.id)
+
+  const startEdit = (period: PayPeriod) => {
+    setError('')
+    setEditingPeriodId(period.id)
+    setEditStartDate(period.startDate)
+    setEditEndDate(period.endDate)
+  }
+
+  const cancelEdit = () => {
+    setEditingPeriodId(null)
+    setEditStartDate('')
+    setEditEndDate('')
+  }
+
+  const handleSaveEdit = async (periodId: string) => {
+    setError('')
+    if (!editStartDate || !editEndDate || editEndDate < editStartDate) {
+      setError('Valid start and end dates are required.')
+      return
+    }
+    const period = periods.find((p) => p.id === periodId)
+    if (!period || !canModifyPeriod(period)) {
+      setError('This pay period can no longer be edited.')
+      return
+    }
+    const overlapping = findPaidPeriodsOverlappingRange(
+      editStartDate,
+      editEndDate,
+      periods,
+      runs,
+      periodId,
+    )
+    if (overlapping.length > 0) {
+      const label = overlapping
+        .map((p) => `${formatDisplayDate(p.startDate)} – ${formatDisplayDate(p.endDate)}`)
+        .join('; ')
+      setError(
+        `These dates overlap a pay period that already has finalized payroll (${label}). Roll back that payroll first or choose non-overlapping dates.`,
+      )
+      return
+    }
+    setSubmitting(true)
+    try {
+      await updateDoc(doc(db, 'payPeriods', periodId), {
+        startDate: editStartDate,
+        endDate: editEndDate,
+      })
+      cancelEdit()
+      await load()
+    } catch {
+      setError('Failed to update pay period.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault()
@@ -77,6 +142,25 @@ export function PayPeriodsPage() {
       await load()
     } catch {
       setError('Failed to create pay period.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleDelete = async (period: PayPeriod) => {
+    setError('')
+    if (!canModifyPeriod(period)) {
+      setError('This pay period can no longer be deleted.')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await deleteDoc(doc(db, 'payPeriods', period.id))
+      if (editingPeriodId === period.id) cancelEdit()
+      setDeleteTarget(null)
+      await load()
+    } catch {
+      setError('Failed to delete pay period.')
     } finally {
       setSubmitting(false)
     }
@@ -132,23 +216,78 @@ export function PayPeriodsPage() {
       <div className="mt-8 space-y-3">
         {periods.map((p) => (
           <div key={p.id} className="card flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="font-semibold">{p.startDate} – {p.endDate}</p>
-              <StatusBadge status={p.status} />
-            </div>
-            {p.status === 'open' && (
-              <button type="button" onClick={() => handleClose(p.id)} className="btn-secondary text-xs">
-                Close Period
-              </button>
-            )}
-            {p.status === 'closed' && (
-              <button type="button" onClick={() => handleReopen(p.id)} className="btn-secondary text-xs">
-                Reopen Period
-              </button>
+            {editingPeriodId === p.id ? (
+              <div className="w-full max-w-lg space-y-4">
+                <p className="font-semibold text-slate-900">Edit pay period</p>
+                <DatePicker label="Start date" value={editStartDate} onChange={setEditStartDate} required />
+                <DatePicker label="End date" value={editEndDate} onChange={setEditEndDate} required />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => void handleSaveEdit(p.id)}
+                    className="btn-primary text-xs"
+                  >
+                    Save
+                  </button>
+                  <button type="button" disabled={submitting} onClick={cancelEdit} className="btn-secondary text-xs">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <p className="font-semibold">{p.startDate} – {p.endDate}</p>
+                  <StatusBadge status={p.status} />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {canModifyPeriod(p) && (
+                    <>
+                      <IconButton label="Edit pay period" onClick={() => startEdit(p)}>
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton
+                        label="Delete pay period"
+                        variant="danger"
+                        disabled={submitting}
+                        onClick={() => setDeleteTarget(p)}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </>
+                  )}
+                  {p.status === 'open' && (
+                    <button type="button" onClick={() => handleClose(p.id)} className="btn-secondary text-xs">
+                      Close Period
+                    </button>
+                  )}
+                  {p.status === 'closed' && (
+                    <button type="button" onClick={() => handleReopen(p.id)} className="btn-secondary text-xs">
+                      Reopen Period
+                    </button>
+                  )}
+                </div>
+              </>
             )}
           </div>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete pay period?"
+        description={
+          deleteTarget
+            ? `Permanently delete ${formatDisplayDate(deleteTarget.startDate)} – ${formatDisplayDate(deleteTarget.endDate)}? This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        variant="danger"
+        busy={submitting}
+        onConfirm={() => deleteTarget && void handleDelete(deleteTarget)}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

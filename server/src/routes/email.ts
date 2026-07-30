@@ -50,6 +50,10 @@ async function buildPaySlipMail(slipId: string) {
     payPeriodEnd: slip.payPeriodEnd,
     totalHours: slip.totalHours,
     grossPay: slip.grossPay,
+    tax: slip.tax,
+    taxRate: slip.taxRate,
+    taxYear: slip.taxYear,
+    netPay: slip.netPay,
     signInUrl,
     lineRows,
   })

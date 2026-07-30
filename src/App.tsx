@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { CompanySettingsProvider } from './contexts/CompanySettingsContext'
+import { TaxSettingsProvider } from './contexts/TaxSettingsContext'
 import { DocumentTitle } from './components/DocumentTitle'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/Layout'
@@ -54,6 +55,9 @@ const PaySlipViewPage = lazy(() =>
 const CompanySettingsPage = lazy(() =>
   import('./pages/admin/CompanySettingsPage').then((m) => ({ default: m.CompanySettingsPage })),
 )
+const TaxSettingsPage = lazy(() =>
+  import('./pages/admin/TaxSettingsPage').then((m) => ({ default: m.TaxSettingsPage })),
+)
 const ReportsPage = lazy(() =>
   import('./pages/admin/ReportsPage').then((m) => ({ default: m.ReportsPage })),
 )
@@ -61,6 +65,7 @@ const ReportsPage = lazy(() =>
 function App() {
   return (
     <CompanySettingsProvider>
+      <TaxSettingsProvider>
       <DocumentTitle />
       <AuthProvider>
         <BrowserRouter>
@@ -91,6 +96,7 @@ function App() {
                   <Route path="/admin/payroll" element={<PayrollRunsPage />} />
                   <Route path="/admin/pay-slips" element={<PaySlipViewPage />} />
                   <Route path="/admin/settings" element={<CompanySettingsPage />} />
+                  <Route path="/admin/tax-settings" element={<TaxSettingsPage />} />
                   <Route path="/admin/reports" element={<ReportsPage />} />
                 </Route>
               </Route>
@@ -100,6 +106,7 @@ function App() {
           </Suspense>
         </BrowserRouter>
       </AuthProvider>
+      </TaxSettingsProvider>
     </CompanySettingsProvider>
   )
 }

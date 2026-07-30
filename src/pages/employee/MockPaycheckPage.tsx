@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { collection, doc, getDoc, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
+import { useTaxSettings } from '../../contexts/TaxSettingsContext'
 import { db } from '../../lib/firebase'
 import type { MockPaycheckPreview, PayPeriod, PaySlip, TimeEntry, UserProfile } from '../../lib/types'
 import { buildMockPaycheckForEmployee, findIncludedPaidPeriods, mergeEmployeePaySlips, paySlipMatchesPeriod } from '../../lib/payroll'
@@ -22,6 +23,7 @@ function defaultStartDate(): string {
 
 export function MockPaycheckPage() {
   const { user, profile } = useAuth()
+  const { rates: taxRates } = useTaxSettings()
   const [periods, setPeriods] = useState<PayPeriod[]>([])
   const [selectedPeriodId, setSelectedPeriodId] = useState('')
   const [viewMode, setViewMode] = useState<EarningsViewMode>('estimated')
@@ -185,6 +187,7 @@ export function MockPaycheckPage() {
         rates,
         periods,
         fallbackRate,
+        taxRates,
       )
 
       if (!result) {

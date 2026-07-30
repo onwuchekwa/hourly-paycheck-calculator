@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import type { PaySlip } from '../lib/types'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { resolveCompanyField, resolveCompanyName } from '../lib/companyBranding'
+import { formatTaxRateLabel } from '../lib/tax'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
 import { ResponsiveTable, type ResponsiveTableColumn } from './ui/ResponsiveTable'
 
@@ -114,7 +115,28 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
             <dt className="text-slate-500">Gross Pay</dt>
             <dd className="text-lg font-bold text-brand-700">{formatCurrency(paySlip.grossPay)}</dd>
           </div>
+          {paySlip.taxYear != null && (
+            <div>
+              <dt className="text-slate-500">Tax Year</dt>
+              <dd className="font-medium">{paySlip.taxYear}</dd>
+            </div>
+          )}
         </dl>
+        {paySlip.tax != null && paySlip.netPay != null && paySlip.taxRate != null && (
+          <dl className="mb-6 grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+            <div className="col-span-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+              Deductions
+            </div>
+            <div>
+              <dt className="text-slate-600">Tax ({formatTaxRateLabel(paySlip.taxRate)})</dt>
+              <dd className="font-medium text-red-700">−{formatCurrency(paySlip.tax)}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-slate-900">Net Pay</dt>
+              <dd className="text-lg font-bold text-brand-700">{formatCurrency(paySlip.netPay)}</dd>
+            </div>
+          </dl>
+        )}
         <ResponsiveTable
           columns={lineColumns}
           rows={paySlip.lineItems}

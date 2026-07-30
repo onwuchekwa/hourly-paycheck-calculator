@@ -43,6 +43,7 @@ const adminPayrollNav: NavGroup = {
 const adminSecondaryNav: NavItem[] = [
   { to: '/admin/reports', label: 'Reports' },
   { to: '/admin/settings', label: 'Settings' },
+  { to: '/admin/tax-settings', label: 'Tax Settings' },
 ]
 
 function navLinkClass(isActive: boolean) {

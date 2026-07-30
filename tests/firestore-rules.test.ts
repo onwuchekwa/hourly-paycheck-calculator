@@ -74,6 +74,10 @@ async function seed() {
 
     await admin.doc('settings/company').set({ companyName: 'Test Co' })
     await admin.doc('settings/payroll').set({ lastPaySlipNumber: 3 })
+    await admin.doc('taxRates/seed1').set({
+      rate: 16.65,
+      effectiveFrom: '2025-01-01',
+    })
     await admin.doc('payPeriods/p1').set({ startDate: '2026-07-16', endDate: '2026-07-31', status: 'open' })
     await admin.doc('payrollRuns/run1').set({ status: 'finalized', totalGross: 1000 })
   })
@@ -363,5 +367,42 @@ describe('settings', () => {
     await assertFails(
       db(EMP_UID).doc('settings/company').update({ companyName: 'Hacked' }),
     )
+  })
+})
+
+describe('taxRates', () => {
+  it('allows employee reading tax rates', async () => {
+    await assertSucceeds(db(EMP_UID).doc('taxRates/seed1').get())
+  })
+
+  it('allows admin creating a tax rate', async () => {
+    await assertSucceeds(
+      db(ADMIN_UID).doc('taxRates/r2027').set({
+        rate: 17,
+        effectiveFrom: '2027-01-01',
+      }),
+    )
+  })
+
+  it('allows admin setting effectiveTo on existing rate', async () => {
+    await assertSucceeds(
+      db(ADMIN_UID).doc('taxRates/seed1').update({ effectiveTo: '2026-12-31' }),
+    )
+  })
+
+  it('denies admin changing rate value on existing record', async () => {
+    await assertFails(
+      db(ADMIN_UID).doc('taxRates/seed1').update({ rate: 99 }),
+    )
+  })
+
+  it('denies employee creating tax rates', async () => {
+    await assertFails(
+      db(EMP_UID).doc('taxRates/emp1').set({ rate: 10, effectiveFrom: '2026-01-01' }),
+    )
+  })
+
+  it('denies deleting tax rates', async () => {
+    await assertFails(db(ADMIN_UID).doc('taxRates/seed1').delete())
   })
 })

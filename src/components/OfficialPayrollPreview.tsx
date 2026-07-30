@@ -36,6 +36,18 @@ export function OfficialPayrollPreview({ period, slip, sourceSlips = [] }: Offic
             <dt className="text-slate-500">Total Gross</dt>
             <dd className="font-medium text-brand-700">{formatCurrency(slip.grossPay)}</dd>
           </div>
+          {slip.netPay != null && (
+            <div>
+              <dt className="text-slate-500">Net Pay</dt>
+              <dd className="font-medium text-brand-700">{formatCurrency(slip.netPay)}</dd>
+            </div>
+          )}
+          {slip.taxYear != null && (
+            <div>
+              <dt className="text-slate-500">Tax Year</dt>
+              <dd className="font-medium">{slip.taxYear}</dd>
+            </div>
+          )}
         </dl>
         {individualSlips.length > 1 && (
           <p className="mt-3 text-sm text-slate-600">

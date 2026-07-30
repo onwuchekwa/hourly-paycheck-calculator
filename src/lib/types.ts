@@ -84,6 +84,23 @@ export type PayrollRunType = 'regular' | 'supplemental'
 
 export type PayrollRunScope = 'all' | 'selected'
 
+export interface TaxRate {
+  id: string
+  rate: number
+  effectiveFrom: string
+  effectiveTo?: string | null
+  createdAt?: Timestamp
+  createdBy?: string
+}
+
+export interface TaxBreakdown {
+  taxYear: number
+  taxRate: number
+  taxRateId?: string
+  tax: number
+  netPay: number
+}
+
 export interface PayrollLineItem {
   employeeId: string
   employeeName: string
@@ -92,6 +109,11 @@ export interface PayrollLineItem {
   hourlyRate: number
   timeEntryIds: string[]
   dayBreakdown: PaySlipDayLine[]
+  taxYear?: number
+  taxRate?: number
+  taxRateId?: string
+  tax?: number
+  netPay?: number
 }
 
 export interface PayrollRun {
@@ -106,6 +128,11 @@ export interface PayrollRun {
   entries: PayrollLineItem[]
   totalGross: number
   totalHours: number
+  taxYear?: number
+  taxRate?: number
+  taxRateId?: string
+  totalTax?: number
+  totalNetPay?: number
   createdAt?: Timestamp
   finalizedAt?: Timestamp
   createdBy?: string
@@ -134,6 +161,11 @@ export interface MockPaycheckPreview {
   dayBreakdown: MockPaycheckDayLine[]
   existingPaySlipId?: string
   includedPaidPeriods?: Array<{ id: string; startDate: string; endDate: string }>
+  taxYear?: number
+  taxRate?: number
+  taxRateId?: string
+  tax?: number
+  netPay?: number
 }
 
 export interface PaySlip {
@@ -154,6 +186,11 @@ export interface PaySlip {
   companyAddress?: string
   companyPhone?: string
   lineItems: PaySlipDayLine[]
+  taxYear?: number
+  taxRate?: number
+  taxRateId?: string
+  tax?: number
+  netPay?: number
   createdAt?: Timestamp
 }
 

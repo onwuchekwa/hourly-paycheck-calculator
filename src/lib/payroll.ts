@@ -8,10 +8,45 @@ import type {
   PayPeriod,
   TimeEntry,
   EmployeeRate,
+  TaxRate,
 } from './types'
 import { calcEntryHours, hasCompletedPunch, normalizeEntry } from './timeEntries'
 import { formatDate } from './utils'
 import { getMockPaycheckRate } from './rates'
+import { calculateTaxes, getTaxRateForDate } from './tax'
+
+function applyTaxToLineItem(
+  line: Omit<PayrollLineItem, 'taxYear' | 'taxRate' | 'taxRateId' | 'tax' | 'netPay'>,
+  taxRates: TaxRate[],
+  payPeriodEnd: string,
+): PayrollLineItem {
+  const taxRate = getTaxRateForDate(taxRates, payPeriodEnd)
+  const breakdown = calculateTaxes(line.grossPay, taxRate, payPeriodEnd)
+  return {
+    ...line,
+    taxYear: breakdown.taxYear,
+    taxRate: breakdown.taxRate,
+    taxRateId: breakdown.taxRateId,
+    tax: breakdown.tax,
+    netPay: breakdown.netPay,
+  }
+}
+
+function applyTaxToPreview(
+  preview: Omit<MockPaycheckPreview, 'taxYear' | 'taxRate' | 'taxRateId' | 'tax' | 'netPay'>,
+  taxRates: TaxRate[],
+): MockPaycheckPreview {
+  const taxRate = getTaxRateForDate(taxRates, preview.payPeriodEnd)
+  const breakdown = calculateTaxes(preview.grossPay, taxRate, preview.payPeriodEnd)
+  return {
+    ...preview,
+    taxYear: breakdown.taxYear,
+    taxRate: breakdown.taxRate,
+    taxRateId: breakdown.taxRateId,
+    tax: breakdown.tax,
+    netPay: breakdown.netPay,
+  }
+}
 
 export function buildPayrollForEmployee(
   employeeId: string,
@@ -20,6 +55,7 @@ export function buildPayrollForEmployee(
   rates: EmployeeRate[],
   periods: PayPeriod[],
   fallbackRate = 0,
+  taxRates: TaxRate[] = [],
 ): PayrollLineItem | null {
   const approved = entries.filter(
     (e) => e.employeeId === employeeId && e.status === 'approved' && hasCompletedPunch(normalizeEntry(e)),
@@ -46,15 +82,19 @@ export function buildPayrollForEmployee(
       ? grossPay / totalHours
       : getMockPaycheckRate(rates, periodEnd, periods, fallbackRate)
 
-  return {
-    employeeId,
-    employeeName,
-    totalHours: Math.round(totalHours * 100) / 100,
-    grossPay: Math.round(grossPay * 100) / 100,
-    hourlyRate: Math.round(avgRate * 100) / 100,
-    timeEntryIds: approved.map((e) => e.id),
-    dayBreakdown,
-  }
+  return applyTaxToLineItem(
+    {
+      employeeId,
+      employeeName,
+      totalHours: Math.round(totalHours * 100) / 100,
+      grossPay: Math.round(grossPay * 100) / 100,
+      hourlyRate: Math.round(avgRate * 100) / 100,
+      timeEntryIds: approved.map((e) => e.id),
+      dayBreakdown,
+    },
+    taxRates,
+    periodEnd,
+  )
 }
 
 export function buildPayrollSnapshot(
@@ -63,6 +103,7 @@ export function buildPayrollSnapshot(
   ratesByEmployee: Map<string, EmployeeRate[]>,
   periods: PayPeriod[],
   fallbackRatesByEmployee: Map<string, number>,
+  taxRates: TaxRate[] = [],
 ): PayrollLineItem[] {
   const lines: PayrollLineItem[] = []
   for (const emp of employees) {
@@ -74,6 +115,7 @@ export function buildPayrollSnapshot(
       rates,
       periods,
       fallbackRatesByEmployee.get(emp.uid) ?? 0,
+      taxRates,
     )
     if (line) lines.push(line)
   }
@@ -89,6 +131,7 @@ export function buildMockPaycheckForEmployee(
   rates: EmployeeRate[],
   periods: PayPeriod[],
   fallbackRate = 0,
+  taxRates: TaxRate[] = [],
 ): MockPaycheckPreview | null {
   const completed = entries.filter(
     (e) =>
@@ -119,17 +162,20 @@ export function buildMockPaycheckForEmployee(
       ? grossPay / totalHours
       : getMockPaycheckRate(rates, rangeEnd, periods, fallbackRate)
 
-  return {
-    payPeriodId: '',
-    payPeriodStart: rangeStart,
-    payPeriodEnd: rangeEnd,
-    employeeId,
-    employeeName,
-    totalHours: Math.round(totalHours * 100) / 100,
-    grossPay: Math.round(grossPay * 100) / 100,
-    hourlyRate: Math.round(avgRate * 100) / 100,
-    dayBreakdown: dayBreakdown.sort((a, b) => a.workDate.localeCompare(b.workDate)),
-  }
+  return applyTaxToPreview(
+    {
+      payPeriodId: '',
+      payPeriodStart: rangeStart,
+      payPeriodEnd: rangeEnd,
+      employeeId,
+      employeeName,
+      totalHours: Math.round(totalHours * 100) / 100,
+      grossPay: Math.round(grossPay * 100) / 100,
+      hourlyRate: Math.round(avgRate * 100) / 100,
+      dayBreakdown: dayBreakdown.sort((a, b) => a.workDate.localeCompare(b.workDate)),
+    },
+    taxRates,
+  )
 }
 
 export function paySlipMatchesPeriod(slip: PaySlip, period: PayPeriod): boolean {
@@ -176,6 +222,12 @@ export function mergeEmployeePaySlips(slips: PaySlip[]): PaySlip | null {
     .sort((a, b) => a.workDate.localeCompare(b.workDate))
   const totalHours = Math.round(lineItems.reduce((sum, line) => sum + line.hours, 0) * 100) / 100
   const grossPay = Math.round(lineItems.reduce((sum, line) => sum + line.amount, 0) * 100) / 100
+  const totalTax = sorted.some((slip) => slip.tax != null)
+    ? Math.round(sorted.reduce((sum, slip) => sum + (slip.tax ?? 0), 0) * 100) / 100
+    : undefined
+  const netPay = sorted.some((slip) => slip.netPay != null)
+    ? Math.round(sorted.reduce((sum, slip) => sum + (slip.netPay ?? slip.grossPay), 0) * 100) / 100
+    : undefined
   const hourlyRate =
     totalHours > 0
       ? Math.round((grossPay / totalHours) * 100) / 100
@@ -187,6 +239,8 @@ export function mergeEmployeePaySlips(slips: PaySlip[]): PaySlip | null {
     totalHours,
     grossPay,
     hourlyRate,
+    tax: totalTax,
+    netPay,
   }
 }
 
@@ -219,18 +273,40 @@ export function formatPayrollRunLabel(run: PayrollRun): string {
 }
 
 export function exportPayrollCsv(
-  run: { payPeriodStart: string; payPeriodEnd: string; entries: PayrollLineItem[] },
+  run: {
+    payPeriodStart: string
+    payPeriodEnd: string
+    taxYear?: number
+    taxRate?: number
+    entries: PayrollLineItem[]
+  },
   companyName: string,
 ): string {
-  const header = ['Company', 'Pay Period Start', 'Pay Period End', 'Employee', 'Hours', 'Rate', 'Gross Pay']
+  const header = [
+    'Company',
+    'Pay Period Start',
+    'Pay Period End',
+    'Tax Year',
+    'Tax Rate',
+    'Employee',
+    'Hours',
+    'Rate',
+    'Gross Pay',
+    'Tax',
+    'Net Pay',
+  ]
   const rows = run.entries.map((e) => [
     companyName,
     run.payPeriodStart,
     run.payPeriodEnd,
+    String(e.taxYear ?? run.taxYear ?? ''),
+    e.taxRate != null ? `${e.taxRate}%` : run.taxRate != null ? `${run.taxRate}%` : '',
     e.employeeName,
     e.totalHours.toFixed(2),
     e.hourlyRate.toFixed(2),
     e.grossPay.toFixed(2),
+    e.tax != null ? e.tax.toFixed(2) : '',
+    e.netPay != null ? e.netPay.toFixed(2) : '',
   ])
   return [header, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n')
 }

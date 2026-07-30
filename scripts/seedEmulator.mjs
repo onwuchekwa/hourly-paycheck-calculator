@@ -100,6 +100,11 @@ async function main() {
     paySlipCounterYear: firestoreValue(new Date().getFullYear()),
   })
 
+  await writeDocument('taxRates', 'seed1', {
+    rate: firestoreValue(16.65),
+    effectiveFrom: firestoreValue('2025-01-01'),
+  })
+
   console.log(`Seeded admin user: ${ADMIN.email} / ${ADMIN.password}`)
   console.log(`User id: ${uid}`)
 }

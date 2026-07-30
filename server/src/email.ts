@@ -135,6 +135,10 @@ export function buildPaySlipEmail(params: {
   payPeriodEnd: string
   totalHours: number
   grossPay: number
+  tax?: number
+  taxRate?: number
+  taxYear?: number
+  netPay?: number
   signInUrl: string
   lineRows: string
 }): MailMessage {
@@ -146,27 +150,57 @@ export function buildPaySlipEmail(params: {
     payPeriodEnd,
     totalHours,
     grossPay,
+    tax,
+    taxRate,
+    taxYear,
+    netPay,
     signInUrl,
     lineRows,
   } = params
+
+  const taxLines =
+    tax != null && netPay != null
+      ? [
+          taxRate != null ? `Tax (${taxRate}%): $${tax.toFixed(2)}` : `Tax: $${tax.toFixed(2)}`,
+          `Net pay: $${netPay.toFixed(2)}`,
+        ]
+      : []
 
   const subject = `Pay Slip ${paySlipNumber} — ${companyName}`
   const text = [
     `Hello ${employeeName},`,
     '',
     `Your pay slip ${paySlipNumber} for ${payPeriodStart} – ${payPeriodEnd} is ready.`,
+    taxYear != null ? `Tax year: ${taxYear}` : '',
     `Total hours: ${totalHours.toFixed(2)}`,
     `Gross pay: $${grossPay.toFixed(2)}`,
+    ...taxLines,
     '',
     `View your full pay slip: ${signInUrl}`,
-  ].join('\n')
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  const taxHtml =
+    tax != null && netPay != null
+      ? `<tr>
+          <td style="padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;border-top:none;">
+            <span style="font-size:13px;color:#b91c1c;">Tax${taxRate != null ? ` (${taxRate}%)` : ''}</span>
+            <p style="margin:4px 0 0;font-size:18px;font-weight:700;color:#991b1b;">−$${tax.toFixed(2)}</p>
+          </td>
+          <td style="padding:12px 16px;background:#ecfdf5;border:1px solid #bbf7d0;border-top:none;">
+            <span style="font-size:13px;color:#15803d;">Net pay</span>
+            <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#166534;">$${netPay.toFixed(2)}</p>
+          </td>
+        </tr>`
+      : ''
 
   const html = emailLayout(
     subject,
     `
       <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#0f172a;">Pay Slip ${escapeHtml(paySlipNumber)}</h1>
       <p style="margin:0 0 4px;font-size:15px;color:#475569;">Employee: <strong>${escapeHtml(employeeName)}</strong></p>
-      <p style="margin:0 0 16px;font-size:15px;color:#475569;">Period: ${escapeHtml(payPeriodStart)} – ${escapeHtml(payPeriodEnd)}</p>
+      <p style="margin:0 0 16px;font-size:15px;color:#475569;">Period: ${escapeHtml(payPeriodStart)} – ${escapeHtml(payPeriodEnd)}${taxYear != null ? ` · Tax year ${taxYear}` : ''}</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;">
         <tr>
           <td style="padding:12px 16px;background:#eff6ff;border-radius:8px 8px 0 0;border:1px solid #bfdbfe;border-bottom:none;">
@@ -178,6 +212,7 @@ export function buildPaySlipEmail(params: {
             <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#1e3a8a;">$${grossPay.toFixed(2)}</p>
           </td>
         </tr>
+        ${taxHtml}
       </table>
       <table role="presentation" width="100%" cellpadding="8" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:0 0 8px 8px;font-size:13px;">
         <tr style="background:#f8fafc;">

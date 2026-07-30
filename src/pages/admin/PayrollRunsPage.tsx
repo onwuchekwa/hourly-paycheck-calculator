@@ -14,6 +14,7 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
+import { useTaxSettings } from '../../contexts/TaxSettingsContext'
 import { apiPost } from '../../lib/api'
 import { db } from '../../lib/firebase'
 import type {
@@ -35,6 +36,7 @@ import {
 } from '../../lib/payroll'
 import { getEmployeeRates } from '../../lib/rates'
 import { formatCurrency, formatDecimalHours } from '../../lib/utils'
+import { formatTaxRateLabel } from '../../lib/tax'
 import { getCallableErrorMessage } from '../../lib/errors'
 import { AlertBanner } from '../../components/AlertBanner'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -50,6 +52,7 @@ interface EmployeeOption {
 
 export function PayrollRunsPage() {
   const { user } = useAuth()
+  const { rates: taxRates, getRateForDate } = useTaxSettings()
   const [periods, setPeriods] = useState<PayPeriod[]>([])
   const [runs, setRuns] = useState<PayrollRun[]>([])
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
@@ -159,6 +162,7 @@ export function PayrollRunsPage() {
         ratesByEmployee,
         periods,
         fallbackRatesByEmployee,
+        taxRates,
       )
 
       if (lines.length === 0) {
@@ -172,6 +176,9 @@ export function PayrollRunsPage() {
 
       const totalGross = lines.reduce((s, l) => s + l.grossPay, 0)
       const totalHours = lines.reduce((s, l) => s + l.totalHours, 0)
+      const totalTax = lines.reduce((s, l) => s + (l.tax ?? 0), 0)
+      const totalNetPay = lines.reduce((s, l) => s + (l.netPay ?? l.grossPay), 0)
+      const firstLine = lines[0]
       const runPayload = {
         payPeriodId: period.id,
         payPeriodStart: period.startDate,
@@ -183,6 +190,11 @@ export function PayrollRunsPage() {
         entries: lines,
         totalGross: Math.round(totalGross * 100) / 100,
         totalHours: Math.round(totalHours * 100) / 100,
+        taxYear: firstLine?.taxYear,
+        taxRate: firstLine?.taxRate,
+        taxRateId: firstLine?.taxRateId,
+        totalTax: Math.round(totalTax * 100) / 100,
+        totalNetPay: Math.round(totalNetPay * 100) / 100,
         createdAt: serverTimestamp(),
         createdBy: user?.uid,
       }
@@ -250,6 +262,11 @@ export function PayrollRunsPage() {
           totalHours: line.totalHours,
           hourlyRate: line.hourlyRate,
           grossPay: line.grossPay,
+          taxYear: line.taxYear,
+          taxRate: line.taxRate,
+          taxRateId: line.taxRateId,
+          tax: line.tax,
+          netPay: line.netPay,
           issueDate: run.payPeriodEnd,
           payDate: run.payPeriodEnd,
           companyName,
@@ -264,6 +281,11 @@ export function PayrollRunsPage() {
       batch.update(doc(db, 'payrollRuns', run.id), {
         status: 'finalized',
         finalizedAt: serverTimestamp(),
+        taxYear: run.taxYear,
+        taxRate: run.taxRate,
+        taxRateId: run.taxRateId,
+        totalTax: run.totalTax,
+        totalNetPay: run.totalNetPay,
       })
 
       batch.update(doc(db, 'payPeriods', run.payPeriodId), {
@@ -329,6 +351,11 @@ export function PayrollRunsPage() {
 
   const openPeriods = periods.filter((p) => p.status === 'open')
   const displayRun = preview ?? runs.find((r) => r.status === 'preview') ?? null
+  const previewTaxRate = displayRun
+    ? getRateForDate(displayRun.payPeriodEnd)
+    : selectedPeriodId
+      ? getRateForDate(periods.find((p) => p.id === selectedPeriodId)?.endDate ?? '')
+      : null
 
   const previewColumns: ResponsiveTableColumn<PayrollLineItem>[] = [
     {
@@ -354,6 +381,19 @@ export function PayrollRunsPage() {
       align: 'right',
       className: 'font-medium',
       render: (e) => formatCurrency(e.grossPay),
+    },
+    {
+      key: 'tax',
+      header: 'Tax',
+      align: 'right',
+      render: (e) => (e.tax != null ? formatCurrency(e.tax) : '—'),
+    },
+    {
+      key: 'net',
+      header: 'Net Pay',
+      align: 'right',
+      className: 'font-medium text-brand-700',
+      render: (e) => formatCurrency(e.netPay ?? e.grossPay),
     },
   ]
 
@@ -494,6 +534,16 @@ export function PayrollRunsPage() {
                   <span className="text-xs text-slate-500">Single employee</span>
                 )}
               </div>
+              {displayRun.taxYear != null && displayRun.taxRate != null && (
+                <p className="text-sm text-slate-600">
+                  Tax Year {displayRun.taxYear} · Tax {formatTaxRateLabel(displayRun.taxRate)}
+                </p>
+              )}
+              {!displayRun.taxRate && previewTaxRate && (
+                <p className="text-sm text-slate-600">
+                  Tax {formatTaxRateLabel(previewTaxRate.rate)} (effective {previewTaxRate.effectiveFrom})
+                </p>
+              )}
             </div>
             {displayRun.status === 'preview' && (
               <div className="flex flex-col items-end gap-3">
@@ -538,22 +588,42 @@ export function PayrollRunsPage() {
                   {formatDecimalHours(displayRun.totalHours)}
                 </td>
                 <td className="pt-3" />
-                <td className="pt-3 text-right font-bold text-brand-700">
+                <td className="pt-3 text-right font-semibold">
                   {formatCurrency(displayRun.totalGross)}
+                </td>
+                <td className="pt-3 text-right font-semibold">
+                  {displayRun.totalTax != null ? formatCurrency(displayRun.totalTax) : '—'}
+                </td>
+                <td className="pt-3 text-right font-bold text-brand-700">
+                  {formatCurrency(displayRun.totalNetPay ?? displayRun.totalGross)}
                 </td>
               </tr>
             }
             mobileFooter={
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-slate-900">Total</p>
-                  <p className="text-sm text-slate-600">
-                    {formatDecimalHours(displayRun.totalHours)} hours
-                  </p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-slate-900">Gross</p>
+                    <p className="text-sm text-slate-600">
+                      {formatDecimalHours(displayRun.totalHours)} hours
+                    </p>
+                  </div>
+                  <span className="font-semibold text-slate-900">
+                    {formatCurrency(displayRun.totalGross)}
+                  </span>
                 </div>
-                <span className="text-lg font-bold text-brand-700">
-                  {formatCurrency(displayRun.totalGross)}
-                </span>
+                {displayRun.totalTax != null && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600">Tax</span>
+                    <span className="font-medium">{formatCurrency(displayRun.totalTax)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between border-t border-slate-200 pt-2">
+                  <span className="font-semibold text-slate-900">Net Pay</span>
+                  <span className="text-lg font-bold text-brand-700">
+                    {formatCurrency(displayRun.totalNetPay ?? displayRun.totalGross)}
+                  </span>
+                </div>
               </div>
             }
           />
@@ -578,7 +648,12 @@ export function PayrollRunsPage() {
                   <p>{formatPayrollRunLabel(r)}</p>
                   <StatusBadge status={r.status} />
                 </div>
-                <span className="font-semibold">{formatCurrency(r.totalGross)}</span>
+                <span className="font-semibold">
+                  {formatCurrency(r.totalNetPay ?? r.totalGross)}
+                  {r.totalNetPay != null && (
+                    <span className="ml-1 text-xs font-normal text-slate-500">net</span>
+                  )}
+                </span>
                 <button
                   type="button"
                   onClick={() => setDeleteTarget(r)}
@@ -607,7 +682,12 @@ export function PayrollRunsPage() {
                   )}
                 </div>
               </div>
-              <span className="font-semibold">{formatCurrency(r.totalGross)}</span>
+              <span className="font-semibold">
+                {formatCurrency(r.totalNetPay ?? r.totalGross)}
+                {r.totalNetPay != null && (
+                  <span className="ml-1 text-xs font-normal text-slate-500">net</span>
+                )}
+              </span>
               <Link to={`/admin/pay-slips?run=${r.id}`} className="text-brand-600 text-sm hover:underline">
                 View slips
               </Link>

@@ -11,6 +11,8 @@ interface PaySlipSummaryTableProps {
 export function PaySlipSummaryTable({ slips, selectedId, onSelect }: PaySlipSummaryTableProps) {
   const totalHours = slips.reduce((sum, slip) => sum + slip.totalHours, 0)
   const totalGross = slips.reduce((sum, slip) => sum + slip.grossPay, 0)
+  const totalNet = slips.reduce((sum, slip) => sum + (slip.netPay ?? slip.grossPay), 0)
+  const hasNet = slips.some((slip) => slip.netPay != null)
 
   const columns: ResponsiveTableColumn<PaySlip>[] = [
     {
@@ -25,12 +27,30 @@ export function PaySlipSummaryTable({ slips, selectedId, onSelect }: PaySlipSumm
       render: (slip) => formatDecimalHours(slip.totalHours),
     },
     {
-      key: 'amount',
-      header: 'Amount',
+      key: 'gross',
+      header: 'Gross',
       align: 'right',
-      className: 'font-semibold text-brand-700',
       render: (slip) => formatCurrency(slip.grossPay),
     },
+    ...(hasNet
+      ? [
+          {
+            key: 'net',
+            header: 'Net Pay',
+            align: 'right' as const,
+            className: 'font-semibold text-brand-700',
+            render: (slip: PaySlip) => formatCurrency(slip.netPay ?? slip.grossPay),
+          },
+        ]
+      : [
+          {
+            key: 'amount',
+            header: 'Amount',
+            align: 'right' as const,
+            className: 'font-semibold text-brand-700',
+            render: (slip: PaySlip) => formatCurrency(slip.grossPay),
+          },
+        ]),
   ]
 
   if (onSelect) {
@@ -65,17 +85,32 @@ export function PaySlipSummaryTable({ slips, selectedId, onSelect }: PaySlipSumm
         <tr>
           <td className="pt-4 font-semibold text-slate-900">Total</td>
           <td className="pt-4 text-right font-semibold">{formatDecimalHours(totalHours)}</td>
-          <td className="pt-4 text-right font-bold text-brand-700">{formatCurrency(totalGross)}</td>
+          {hasNet ? (
+            <>
+              <td className="pt-4 text-right font-semibold">{formatCurrency(totalGross)}</td>
+              <td className="pt-4 text-right font-bold text-brand-700">{formatCurrency(totalNet)}</td>
+            </>
+          ) : (
+            <td className="pt-4 text-right font-bold text-brand-700">{formatCurrency(totalGross)}</td>
+          )}
           {onSelect && <td />}
         </tr>
       }
       mobileFooter={
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-slate-900">Total</p>
-            <p className="text-sm text-slate-600">{formatDecimalHours(totalHours)} hours</p>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-slate-900">Total</p>
+              <p className="text-sm text-slate-600">{formatDecimalHours(totalHours)} hours</p>
+            </div>
+            <span className="font-semibold text-slate-900">{formatCurrency(totalGross)} gross</span>
           </div>
-          <span className="text-lg font-bold text-brand-700">{formatCurrency(totalGross)}</span>
+          {hasNet && (
+            <div className="flex items-center justify-between border-t border-slate-200 pt-2">
+              <span className="font-semibold text-slate-900">Net Pay</span>
+              <span className="text-lg font-bold text-brand-700">{formatCurrency(totalNet)}</span>
+            </div>
+          )}
         </div>
       }
     />

@@ -3,6 +3,7 @@ import { isDateInPaidPeriod } from '../lib/payroll'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
 import { AlertBanner } from './AlertBanner'
 import { StatusBadge } from './StatusBadge'
+import { TaxBreakdownSummary } from './TaxBreakdownSummary'
 import { ResponsiveTable, type ResponsiveTableColumn } from './ui/ResponsiveTable'
 
 interface MockPaycheckPreviewProps {
@@ -113,6 +114,16 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
           <dd className="font-medium text-brand-700">{formatCurrency(preview.grossPay)}</dd>
         </div>
       </dl>
+
+      <TaxBreakdownSummary
+        grossPay={preview.grossPay}
+        tax={preview.tax}
+        taxRate={preview.taxRate}
+        netPay={preview.netPay}
+        taxYear={preview.taxYear}
+        estimated
+        className="mb-6"
+      />
 
       <ResponsiveTable
         columns={columns}

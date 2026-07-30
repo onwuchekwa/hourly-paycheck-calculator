@@ -188,7 +188,46 @@ export function dateRangeOverlapsPeriod(
   rangeEnd: string,
   period: PayPeriod,
 ): boolean {
-  return period.startDate <= rangeEnd && period.endDate >= rangeStart
+  return periodsDateRangesOverlap(rangeStart, rangeEnd, period.startDate, period.endDate)
+}
+
+export function periodsDateRangesOverlap(
+  aStart: string,
+  aEnd: string,
+  bStart: string,
+  bEnd: string,
+): boolean {
+  return bStart <= aEnd && bEnd >= aStart
+}
+
+export function periodHasFinalizedRuns(runs: PayrollRun[], payPeriodId: string): boolean {
+  return runs.some((run) => run.status === 'finalized' && run.payPeriodId === payPeriodId)
+}
+
+export function isLastFinalizedRunForPeriod(
+  runs: PayrollRun[],
+  runId: string,
+  payPeriodId: string,
+): boolean {
+  const finalizedForPeriod = runs.filter(
+    (run) => run.status === 'finalized' && run.payPeriodId === payPeriodId,
+  )
+  return finalizedForPeriod.length === 1 && finalizedForPeriod[0]?.id === runId
+}
+
+export function findPaidPeriodsOverlappingRange(
+  rangeStart: string,
+  rangeEnd: string,
+  periods: PayPeriod[],
+  runs: PayrollRun[],
+): PayPeriod[] {
+  const paidPeriodIds = new Set(
+    runs.filter((run) => run.status === 'finalized').map((run) => run.payPeriodId),
+  )
+  return periods
+    .filter((period) => paidPeriodIds.has(period.id))
+    .filter((period) => periodsDateRangesOverlap(rangeStart, rangeEnd, period.startDate, period.endDate))
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))
 }
 
 export function findIncludedPaidPeriods(
@@ -261,6 +300,25 @@ export function collectPaidTimeEntryIdsForPeriod(
 export function excludePaidTimeEntries(entries: TimeEntry[], paidIds: Set<string>): TimeEntry[] {
   if (paidIds.size === 0) return entries
   return entries.filter((entry) => !paidIds.has(entry.id))
+}
+
+export function isUnpaidApprovedPayrollEntry(entry: TimeEntry, paidEntryIds: Set<string>): boolean {
+  return (
+    entry.status === 'approved' &&
+    hasCompletedPunch(normalizeEntry(entry)) &&
+    !paidEntryIds.has(entry.id)
+  )
+}
+
+export function getEmployeeIdsWithUnpaidApprovedHours(
+  entries: TimeEntry[],
+  paidEntryIds: Set<string>,
+): Set<string> {
+  const ids = new Set<string>()
+  for (const entry of entries) {
+    if (isUnpaidApprovedPayrollEntry(entry, paidEntryIds)) ids.add(entry.employeeId)
+  }
+  return ids
 }
 
 export function formatPayrollRunLabel(run: PayrollRun): string {

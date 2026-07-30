@@ -11,13 +11,16 @@ import {
   deleteField,
 } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
-import type { PayPeriod } from '../../lib/types'
+import type { PayPeriod, PayrollRun } from '../../lib/types'
+import { findPaidPeriodsOverlappingRange } from '../../lib/payroll'
+import { formatDisplayDate } from '../../lib/utils'
 import { DatePicker } from '../../components/DatePicker'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
 export function PayPeriodsPage() {
   const [periods, setPeriods] = useState<PayPeriod[]>([])
+  const [runs, setRuns] = useState<PayrollRun[]>([])
   const [loading, setLoading] = useState(true)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -25,9 +28,12 @@ export function PayPeriodsPage() {
   const [submitting, setSubmitting] = useState(false)
 
   const load = async () => {
-    const q = query(collection(db, 'payPeriods'), orderBy('startDate', 'desc'))
-    const snap = await getDocs(q)
-    setPeriods(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayPeriod))
+    const [periodSnap, runSnap] = await Promise.all([
+      getDocs(query(collection(db, 'payPeriods'), orderBy('startDate', 'desc'))),
+      getDocs(query(collection(db, 'payrollRuns'), orderBy('createdAt', 'desc'))),
+    ])
+    setPeriods(periodSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayPeriod))
+    setRuns(runSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayrollRun))
     setLoading(false)
   }
 
@@ -46,6 +52,16 @@ export function PayPeriodsPage() {
     }
     if (hasOpen) {
       setError('Close the current open pay period before creating a new one.')
+      return
+    }
+    const overlapping = findPaidPeriodsOverlappingRange(startDate, endDate, periods, runs)
+    if (overlapping.length > 0) {
+      const label = overlapping
+        .map((p) => `${formatDisplayDate(p.startDate)} – ${formatDisplayDate(p.endDate)}`)
+        .join('; ')
+      setError(
+        `These dates overlap a pay period that already has finalized payroll (${label}). Roll back that payroll first or choose non-overlapping dates.`,
+      )
       return
     }
     setSubmitting(true)

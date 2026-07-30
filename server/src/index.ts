@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit'
 import { ApiError } from './errors.js'
 import { employeesRouter } from './routes/employees.js'
 import { emailRouter } from './routes/email.js'
+import { payrollRouter } from './routes/payroll.js'
 
 const app = express()
 
@@ -54,6 +55,7 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/employees', employeesRouter)
 app.use('/api/email', emailRouter)
+app.use('/api/payroll', payrollRouter)
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (err instanceof ApiError) {

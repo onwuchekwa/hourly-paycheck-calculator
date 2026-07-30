@@ -33,6 +33,9 @@ import {
   collectPaidTimeEntryIdsForPeriod,
   excludePaidTimeEntries,
   formatPayrollRunLabel,
+  getEmployeeIdsWithUnpaidApprovedHours,
+  isLastFinalizedRunForPeriod,
+  periodHasFinalizedRuns,
 } from '../../lib/payroll'
 import { getEmployeeRates } from '../../lib/rates'
 import { formatCurrency, formatDecimalHours } from '../../lib/utils'
@@ -40,6 +43,7 @@ import { formatTaxRateLabel } from '../../lib/tax'
 import { getCallableErrorMessage } from '../../lib/errors'
 import { AlertBanner } from '../../components/AlertBanner'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { IconButton, RollbackIcon } from '../../components/IconButton'
 import { StatusBadge } from '../../components/StatusBadge'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 import { PageHeader, ResponsiveTable, type ResponsiveTableColumn } from '../../components/ui'
@@ -67,7 +71,9 @@ export function PayrollRunsPage() {
   const [success, setSuccess] = useState('')
   const [finalizeTarget, setFinalizeTarget] = useState<PayrollRun | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<PayrollRun | null>(null)
+  const [rollbackTarget, setRollbackTarget] = useState<PayrollRun | null>(null)
   const [emailOnFinalize, setEmailOnFinalize] = useState(true)
+  const [supplementalEligibleIds, setSupplementalEligibleIds] = useState<Set<string>>(new Set())
 
   const load = async () => {
     const [periodSnap, runSnap, empSnap] = await Promise.all([
@@ -107,6 +113,36 @@ export function PayrollRunsPage() {
     void load()
   }, [])
 
+  useEffect(() => {
+    if (runType !== 'supplemental' || !selectedPeriodId) {
+      setSupplementalEligibleIds(new Set())
+      return
+    }
+
+    const period = periods.find((p) => p.id === selectedPeriodId)
+    if (!period) return
+
+    let cancelled = false
+    void (async () => {
+      const entriesSnap = await getDocs(
+        query(
+          collection(db, 'timeEntries'),
+          where('workDate', '>=', period.startDate),
+          where('workDate', '<=', period.endDate),
+          where('status', '==', 'approved'),
+        ),
+      )
+      if (cancelled) return
+      const entries = entriesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as TimeEntry)
+      const paidEntryIds = collectPaidTimeEntryIdsForPeriod(runs, period.id)
+      setSupplementalEligibleIds(getEmployeeIdsWithUnpaidApprovedHours(entries, paidEntryIds))
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [runType, selectedPeriodId, periods, runs])
+
   const toggleEmployee = (uid: string) => {
     setSelectedEmployeeIds((current) =>
       current.includes(uid) ? current.filter((id) => id !== uid) : [...current, uid],
@@ -126,6 +162,13 @@ export function PayrollRunsPage() {
       const period = periods.find((p) => p.id === selectedPeriodId)
       if (!period) return
 
+      if (runType === 'regular' && periodHasFinalizedRuns(runs, period.id)) {
+        setError(
+          'This pay period already has finalized payroll. Use supplemental payroll for unpaid hours, or roll back the existing run first.',
+        )
+        return
+      }
+
       const entriesSnap = await getDocs(
         query(
           collection(db, 'timeEntries'),
@@ -136,14 +179,28 @@ export function PayrollRunsPage() {
       )
       let entries = entriesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as TimeEntry)
 
-      if (runType === 'supplemental') {
-        const paidEntryIds = collectPaidTimeEntryIdsForPeriod(runs, period.id)
-        entries = excludePaidTimeEntries(entries, paidEntryIds)
-      }
-
       let targetEmployees = employees
       if (employeeScope === 'selected') {
         targetEmployees = employees.filter((emp) => selectedEmployeeIds.includes(emp.uid))
+      }
+
+      if (runType === 'supplemental') {
+        const paidEntryIds = collectPaidTimeEntryIdsForPeriod(runs, period.id)
+        const eligibleEmployeeIds = getEmployeeIdsWithUnpaidApprovedHours(entries, paidEntryIds)
+
+        if (
+          employeeScope === 'selected' &&
+          !selectedEmployeeIds.some((id) => eligibleEmployeeIds.has(id))
+        ) {
+          setError('Selected employee(s) have no unpaid approved hours for this period.')
+          return
+        }
+
+        targetEmployees = targetEmployees.filter((emp) => eligibleEmployeeIds.has(emp.uid))
+        entries = excludePaidTimeEntries(entries, paidEntryIds)
+      }
+
+      if (employeeScope === 'selected') {
         entries = entries.filter((entry) => selectedEmployeeIds.includes(entry.employeeId))
       }
 
@@ -337,6 +394,31 @@ export function PayrollRunsPage() {
     }
   }
 
+  const handleRollback = async (run: PayrollRun) => {
+    if (run.status !== 'finalized') return
+    setBusy(true)
+    setError('')
+    setSuccess('')
+    try {
+      const result = await apiPost<{
+        success: boolean
+        payPeriodReopened: boolean
+        deletedSlipCount: number
+      }>('/api/payroll/rollback', { payrollRunId: run.id })
+      setRollbackTarget(null)
+      setSuccess(
+        result.payPeriodReopened
+          ? `Payroll rolled back. ${result.deletedSlipCount} pay slip(s) deleted. Pay period reopened.`
+          : `Payroll rolled back. ${result.deletedSlipCount} pay slip(s) deleted.`,
+      )
+      await load()
+    } catch (err) {
+      setError(getCallableErrorMessage(err, 'Failed to roll back payroll.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const finalizeDescription = () => {
     const count = finalizeTarget?.entries.length ?? 0
     const employeeLabel = count === 1 ? '1 employee' : `${count} employees`
@@ -351,6 +433,8 @@ export function PayrollRunsPage() {
 
   const openPeriods = periods.filter((p) => p.status === 'open')
   const displayRun = preview ?? runs.find((r) => r.status === 'preview') ?? null
+  const selectedPeriodHasFinalizedRuns =
+    selectedPeriodId !== '' && periodHasFinalizedRuns(runs, selectedPeriodId)
   const previewTaxRate = displayRun
     ? getRateForDate(displayRun.payPeriodEnd)
     : selectedPeriodId
@@ -437,6 +521,7 @@ export function PayrollRunsPage() {
               name="runType"
               className="mt-1"
               checked={runType === 'regular'}
+              disabled={selectedPeriodHasFinalizedRuns}
               onChange={() => setRunType('regular')}
             />
             <span>
@@ -444,6 +529,11 @@ export function PayrollRunsPage() {
               <span className="mt-0.5 block text-slate-500">
                 Include all approved hours for the selected employees in this period.
               </span>
+              {selectedPeriodHasFinalizedRuns && (
+                <span className="mt-1 block text-amber-700">
+                  Unavailable — this period already has finalized payroll. Use supplemental payroll or roll back an existing run.
+                </span>
+              )}
             </span>
           </label>
           <label className="flex items-start gap-2 text-sm text-slate-700">
@@ -457,7 +547,7 @@ export function PayrollRunsPage() {
             <span>
               <span className="font-medium">Supplemental payroll</span>
               <span className="mt-0.5 block text-slate-500">
-                Catch up employees missed in an earlier run by paying only hours not yet included in a finalized payroll for this period.
+                Pay only unpaid approved hours — entries not yet included in a finalized payroll run for this period. Employees with no remaining unpaid hours are excluded.
               </span>
             </span>
           </label>
@@ -495,16 +585,33 @@ export function PayrollRunsPage() {
               {employees.length === 0 ? (
                 <p className="text-sm text-slate-500">No active employees found.</p>
               ) : (
-                employees.map((emp) => (
-                  <label key={emp.uid} className="flex items-center gap-2 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={selectedEmployeeIds.includes(emp.uid)}
-                      onChange={() => toggleEmployee(emp.uid)}
-                    />
-                    {emp.displayName}
-                  </label>
-                ))
+                employees.map((emp) => {
+                  const ineligibleForSupplemental =
+                    runType === 'supplemental' &&
+                    Boolean(selectedPeriodId) &&
+                    !supplementalEligibleIds.has(emp.uid)
+                  return (
+                    <label
+                      key={emp.uid}
+                      className={`flex items-center gap-2 text-sm ${
+                        ineligibleForSupplemental ? 'text-slate-400' : 'text-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedEmployeeIds.includes(emp.uid)}
+                        disabled={ineligibleForSupplemental}
+                        onChange={() => toggleEmployee(emp.uid)}
+                      />
+                      <span>
+                        {emp.displayName}
+                        {ineligibleForSupplemental && (
+                          <span className="ml-1 text-xs">(No unpaid approved hours)</span>
+                        )}
+                      </span>
+                    </label>
+                  )
+                })
               )}
             </div>
           </div>
@@ -691,6 +798,14 @@ export function PayrollRunsPage() {
               <Link to={`/admin/pay-slips?run=${r.id}`} className="text-brand-600 text-sm hover:underline">
                 View slips
               </Link>
+              <IconButton
+                label="Rollback payroll run"
+                variant="danger"
+                disabled={busy}
+                onClick={() => setRollbackTarget(r)}
+              >
+                <RollbackIcon />
+              </IconButton>
             </li>
           ))}
         </ul>
@@ -709,6 +824,25 @@ export function PayrollRunsPage() {
         busy={busy}
         onConfirm={() => deleteTarget && void handleDeletePreview(deleteTarget)}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={rollbackTarget !== null}
+        title="Roll back payroll run?"
+        description={
+          rollbackTarget
+            ? `This will permanently delete ${formatPayrollRunLabel(rollbackTarget)} and all pay slips from this run. Pay slip numbers already issued will not be reused.${
+                isLastFinalizedRunForPeriod(runs, rollbackTarget.id, rollbackTarget.payPeriodId)
+                  ? ' The pay period will be reopened.'
+                  : ' Other finalized runs for this pay period will remain.'
+              }`
+            : ''
+        }
+        confirmLabel="Roll back"
+        variant="danger"
+        busy={busy}
+        onConfirm={() => rollbackTarget && void handleRollback(rollbackTarget)}
+        onCancel={() => setRollbackTarget(null)}
       />
 
       <ConfirmDialog

@@ -55,3 +55,15 @@ export function DeleteIcon() {
     </svg>
   )
 }
+
+export function RollbackIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+      <path
+        fillRule="evenodd"
+        d="M7.793 2.232a.75.75 0 0 1-.128 1.05l-2.2 2.032h7.349a5.749 5.749 0 0 1 5.186 8.195 5.753 5.753 0 0 1-4.004 2.864.75.75 0 0 1-.312-1.47 4.253 4.253 0 0 0 2.963-2.12A4.25 4.25 0 0 0 5.75 6.532H3.543l2.2 2.032a.75.75 0 1 1-1.016 1.1l-3.5-3.25a.75.75 0 0 1 0-1.1l3.5-3.25a.75.75 0 0 1 1.05.17Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  )
+}

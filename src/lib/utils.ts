@@ -37,12 +37,27 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
-function timeOfDayFraction(date: Date): number {
-  return (
-    date.getHours() * 3_600 +
-    date.getMinutes() * 60 +
-    date.getSeconds()
-  ) / 86_400
+function minutesOfDay(date: Date): number {
+  return date.getHours() * 60 + date.getMinutes()
+}
+
+export function calcDurationMinutes(clockIn: Date, clockOut: Date): number {
+  const ms = clockOut.getTime() - clockIn.getTime()
+  if (ms <= 0) return 0
+
+  let minuteDiff = minutesOfDay(clockOut) - minutesOfDay(clockIn)
+  if (minuteDiff < 0) {
+    minuteDiff += Math.max(1, Math.round(ms / 86_400_000)) * 24 * 60
+  }
+  return minuteDiff
+}
+
+export function formatDurationMinutes(totalMinutes: number): string {
+  const safeMinutes = Math.max(0, Math.floor(totalMinutes))
+  const hours = Math.floor(safeMinutes / 60)
+  const minutes = safeMinutes % 60
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(hours)}:${pad(minutes)}`
 }
 
 export function calcHours(
@@ -50,31 +65,13 @@ export function calcHours(
   clockOut: Timestamp | null | undefined,
 ): number {
   if (!clockIn || !clockOut) return 0
-  const inDate = clockIn.toDate()
-  const outDate = clockOut.toDate()
-  const ms = clockOut.toMillis() - clockIn.toMillis()
-  if (ms <= 0) return 0
-
-  let dayDiff = timeOfDayFraction(outDate) - timeOfDayFraction(inDate)
-  if (dayDiff <= 0) {
-    dayDiff += Math.max(1, Math.round(ms / 86_400_000))
-  }
-
-  const hours = dayDiff * 24
-  return Math.round(hours * 100) / 100
-}
-
-function formatDurationSeconds(totalSeconds: number): string {
-  const safeSeconds = Math.max(0, Math.floor(totalSeconds))
-  const hours = Math.floor(safeSeconds / 3_600)
-  const minutes = Math.floor((safeSeconds % 3_600) / 60)
-  const seconds = safeSeconds % 60
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+  const minutes = calcDurationMinutes(clockIn.toDate(), clockOut.toDate())
+  if (minutes <= 0) return 0
+  return Math.round((minutes / 60) * 100) / 100
 }
 
 export function formatDecimalHours(hours: number): string {
-  return formatDurationSeconds(Math.round(hours * 3_600))
+  return formatDurationMinutes(Math.round(hours * 60))
 }
 
 export function formatDuration(
@@ -82,9 +79,9 @@ export function formatDuration(
   clockOut: Timestamp | null | undefined,
 ): string {
   if (!clockIn || !clockOut) return '—'
-  const ms = clockOut.toMillis() - clockIn.toMillis()
-  if (ms <= 0) return '00:00:00'
-  return formatDurationSeconds(Math.floor(ms / 1_000))
+  const minutes = calcDurationMinutes(clockIn.toDate(), clockOut.toDate())
+  if (minutes <= 0) return '00:00'
+  return formatDurationMinutes(minutes)
 }
 
 export function timeEntryDocId(employeeId: string, workDate: string): string {

@@ -10,7 +10,7 @@ import {
 } from 'firebase/firestore'
 import { db } from './firebase'
 import type { TimeEntry, TimePunch } from './types'
-import { calcHours, formatDuration, todayString } from './utils'
+import { calcDurationMinutes, formatDuration, formatDurationMinutes, todayString } from './utils'
 
 export interface OpenPunchLocation {
   entryId: string
@@ -153,33 +153,30 @@ export function hasCompletedPunch(entry: TimeEntry): boolean {
 }
 
 export function calcEntryHours(entry: TimeEntry): number {
-  const total = getPunches(entry).reduce((sum, p) => sum + calcHours(p.clockIn, p.clockOut), 0)
-  return Math.round(total * 100) / 100
+  const totalMinutes = getPunches(entry).reduce((sum, p) => {
+    if (!p.clockIn || !p.clockOut) return sum
+    return sum + calcDurationMinutes(p.clockIn.toDate(), p.clockOut.toDate())
+  }, 0)
+  return Math.round((totalMinutes / 60) * 100) / 100
 }
 
 export function formatEntryDuration(entry: TimeEntry): string {
   const punches = getPunches(entry)
   if (punches.length === 0) return '—'
 
-  let totalMs = 0
+  let totalMinutes = 0
   for (const p of punches) {
     if (!p.clockIn || !p.clockOut) continue
-    const ms = p.clockOut.toMillis() - p.clockIn.toMillis()
-    if (ms > 0) totalMs += ms
+    totalMinutes += calcDurationMinutes(p.clockIn.toDate(), p.clockOut.toDate())
   }
 
-  if (totalMs <= 0) {
+  if (totalMinutes <= 0) {
     const open = punches.find((p) => p.clockIn && !p.clockOut)
     if (open) return '—'
-    return '00:00:00'
+    return '00:00'
   }
 
-  const totalSeconds = Math.floor(totalMs / 1_000)
-  const hours = Math.floor(totalSeconds / 3_600)
-  const minutes = Math.floor((totalSeconds % 3_600) / 60)
-  const seconds = totalSeconds % 60
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+  return formatDurationMinutes(totalMinutes)
 }
 
 export function formatPunchDuration(punch: TimePunch): string {

@@ -21,7 +21,7 @@ function applyTaxToLineItem(
   payPeriodEnd: string,
 ): PayrollLineItem {
   const taxRate = getTaxRateForDate(taxRates, payPeriodEnd)
-  const breakdown = calculateTaxes(line.grossPay, taxRate, payPeriodEnd)
+  const breakdown = calculateTaxes(line.grossPay, taxRate, payPeriodEnd, taxRates)
   return {
     ...line,
     taxYear: breakdown.taxYear,
@@ -37,7 +37,7 @@ function applyTaxToPreview(
   taxRates: TaxRate[],
 ): MockPaycheckPreview {
   const taxRate = getTaxRateForDate(taxRates, preview.payPeriodEnd)
-  const breakdown = calculateTaxes(preview.grossPay, taxRate, preview.payPeriodEnd)
+  const breakdown = calculateTaxes(preview.grossPay, taxRate, preview.payPeriodEnd, taxRates)
   return {
     ...preview,
     taxYear: breakdown.taxYear,

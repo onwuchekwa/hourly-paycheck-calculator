@@ -23,7 +23,7 @@ function defaultStartDate(): string {
 
 export function MockPaycheckPage() {
   const { user, profile } = useAuth()
-  const { rates: taxRates } = useTaxSettings()
+  const { rates: taxRates, loading: taxRatesLoading } = useTaxSettings()
   const [periods, setPeriods] = useState<PayPeriod[]>([])
   const [selectedPeriodId, setSelectedPeriodId] = useState('')
   const [viewMode, setViewMode] = useState<EarningsViewMode>('estimated')
@@ -210,7 +210,7 @@ export function MockPaycheckPage() {
     }
   }
 
-  if (loading) return <LoadingSpinner />
+  if (loading || taxRatesLoading) return <LoadingSpinner />
 
   const hasResults = viewMode === 'official' ? officialSlip !== null : preview !== null
 

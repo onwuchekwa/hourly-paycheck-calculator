@@ -74,10 +74,19 @@ describe('calculateTaxes', () => {
     expect(breakdown.taxRateId).toBe('r1')
   })
 
-  it('uses fallback rate when no rate provided', () => {
-    const breakdown = calculateTaxes(1000, null, '2024-12-31', 16.65)
+  it('uses active rate when no rate matches the pay period end date', () => {
+    const breakdown = calculateTaxes(1000, null, '2024-12-31', rates)
     expect(breakdown.tax).toBe(166.5)
     expect(breakdown.netPay).toBe(833.5)
+    expect(breakdown.taxRate).toBe(16.65)
+    expect(breakdown.taxRateId).toBe('r2')
+  })
+
+  it('uses zero tax when no configured rates exist', () => {
+    const breakdown = calculateTaxes(1000, null, '2024-12-31', [])
+    expect(breakdown.tax).toBe(0)
+    expect(breakdown.netPay).toBe(1000)
+    expect(breakdown.taxRate).toBe(0)
   })
 
   it('rounds to cents', () => {

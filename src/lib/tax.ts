@@ -1,7 +1,5 @@
 import type { TaxBreakdown, TaxRate } from './types'
 
-export const DEFAULT_TAX_RATE = 16.65
-
 export function resolveTaxYear(payPeriodEnd: string): number {
   return Number.parseInt(payPeriodEnd.slice(0, 4), 10)
 }
@@ -35,15 +33,16 @@ export function calculateTaxes(
   grossPay: number,
   rate: TaxRate | null,
   payPeriodEnd: string,
-  fallbackRate = DEFAULT_TAX_RATE,
+  allRates: TaxRate[] = [],
 ): TaxBreakdown {
-  const taxRate = rate?.rate ?? fallbackRate
+  const resolved = rate ?? getActiveTaxRate(allRates)
+  const taxRate = resolved?.rate ?? 0
   const tax = Math.round(grossPay * (taxRate / 100) * 100) / 100
   const netPay = Math.round((grossPay - tax) * 100) / 100
   return {
     taxYear: resolveTaxYear(payPeriodEnd),
     taxRate,
-    taxRateId: rate?.id,
+    taxRateId: resolved?.id,
     tax,
     netPay,
   }

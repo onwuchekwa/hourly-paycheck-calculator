@@ -7,20 +7,22 @@ import { LoadingSpinner } from '../components/LoadingSpinner'
 import { useFirebaseEmulators } from '../lib/firebase-config'
 import { getAuthErrorMessage } from '../lib/errors'
 import { adminHomePath } from '../lib/roles'
+import { isUnlockLockedOut } from '../lib/offline/encryptedVault'
 
 export function LoginPage() {
-  const { login, user, profile, loading } = useAuth()
+  const { login, user, profile, loading, isOfflineSession, vaultLocked } = useAuth()
   const { appTitle } = useCompanySettings()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const usingEmulators = useFirebaseEmulators()
+  const offline = !navigator.onLine
 
   if (loading) return <LoadingSpinner fullPage />
 
-  if (user && profile) {
-    if (profile.mustChangePassword) return <Navigate to="/change-password" replace />
+  if ((user || isOfflineSession) && profile && !vaultLocked) {
+    if (profile.mustChangePassword && user) return <Navigate to="/change-password" replace />
     return <Navigate to={adminHomePath(profile.role)} replace />
   }
 
@@ -53,6 +55,11 @@ export function LoginPage() {
     setError('')
     setSubmitting(true)
     try {
+      const lockout = await isUnlockLockedOut()
+      if (lockout.locked) {
+        setError(`Too many failed attempts. Try again after ${lockout.lockedUntil?.toLocaleTimeString()}.`)
+        return
+      }
       await login(email, password)
     } catch (err) {
       setError(getAuthErrorMessage(err))
@@ -73,6 +80,18 @@ export function LoginPage() {
             Use the credentials provided by your employer.
           </p>
         </div>
+
+        {vaultLocked && user && (
+          <AlertBanner variant="info" className="mb-4">
+            Session locked. Enter your password to unlock your timesheet.
+          </AlertBanner>
+        )}
+
+        {offline && !vaultLocked && (
+          <AlertBanner variant="info" className="mb-4">
+            You are offline. Employees can unlock with a password if they have signed in on this device before.
+          </AlertBanner>
+        )}
 
         <form onSubmit={handleSubmit} className="card space-y-5 border border-slate-200 shadow-md" noValidate>
           {error && <AlertBanner variant="error">{error}</AlertBanner>}
@@ -105,7 +124,7 @@ export function LoginPage() {
             />
           </div>
           <button type="submit" disabled={submitting} className="btn-primary w-full">
-            {submitting ? 'Signing in…' : 'Sign in'}
+            {submitting ? 'Signing in…' : offline ? 'Unlock offline' : 'Sign in'}
           </button>
         </form>
 

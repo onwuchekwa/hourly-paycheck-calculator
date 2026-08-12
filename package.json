@@ -14,15 +14,19 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:rules": "npx firebase-tools@latest emulators:exec --only firestore \"vitest run tests/firestore-rules.test.ts\""
+    "test:rules": "npx firebase-tools@latest emulators:exec --only firestore \"vitest run tests/firestore-rules.test.ts\"",
+    "test:offline": "vitest run tests/offline-serialization.test.ts tests/offline-integrity.test.ts"
   },
   "dependencies": {
+    "@noble/hashes": "^2.3.0",
     "firebase": "^12.16.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-router-dom": "^7.18.1"
+    "react-router-dom": "^7.18.1",
+    "vite-plugin-pwa": "^1.3.0",
+    "workbox-window": "^7.4.1"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
@@ -32,6 +36,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^9.2.1",
+    "jsdom": "^29.1.1",
     "oxlint": "^1.71.0",
     "tailwindcss": "^4.3.2",
     "typescript": "~6.0.2",

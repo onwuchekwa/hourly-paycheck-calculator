@@ -1,18 +1,18 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { ConnectivityProvider } from './contexts/ConnectivityContext'
 import { CompanySettingsProvider } from './contexts/CompanySettingsContext'
 import { TaxSettingsProvider } from './contexts/TaxSettingsContext'
 import { DocumentTitle } from './components/DocumentTitle'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/Layout'
 import { LoadingSpinner } from './components/LoadingSpinner'
+import { SessionGuard } from './components/SessionGuard'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
 
-// Route-level code splitting keeps the initial bundle small; each page loads
-// on first navigation. Public pages stay eager for instant first paint.
 const EmployeeDashboard = lazy(() =>
   import('./pages/employee/EmployeeDashboard').then((m) => ({ default: m.EmployeeDashboard })),
 )
@@ -68,7 +68,9 @@ function App() {
       <TaxSettingsProvider>
       <DocumentTitle />
       <AuthProvider>
+        <ConnectivityProvider>
         <BrowserRouter>
+          <SessionGuard />
           <Suspense fallback={<LoadingSpinner fullPage />}>
             <Routes>
               <Route path="/" element={<HomePage />} />
@@ -105,6 +107,7 @@ function App() {
             </Routes>
           </Suspense>
         </BrowserRouter>
+        </ConnectivityProvider>
       </AuthProvider>
       </TaxSettingsProvider>
     </CompanySettingsProvider>

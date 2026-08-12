@@ -1,24 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import {
-  doc,
-  deleteDoc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-  Timestamp,
-} from 'firebase/firestore'
+import { Timestamp } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
-import { db } from '../../lib/firebase'
+import { useConnectivity } from '../../contexts/ConnectivityContext'
 import type { TimeEntry } from '../../lib/types'
 import {
-  autoCloseStalePunches,
   canEditEntry,
   canSubmitForReview,
   createClockInTimestamp,
   createClockOutTimestamp,
-  fetchEmployeeEntries,
   findGlobalOpenPunch,
   formatEntryDuration,
   formatPunchDuration,
@@ -32,6 +22,16 @@ import {
   replacePunchAtIndex,
   serializePunchesForHistory,
 } from '../../lib/timeEntries'
+import {
+  repositoryAutoCloseStalePunches,
+  repositoryDeleteEntry,
+  repositoryEnsureEntry,
+  repositoryFetchEmployeeEntries,
+  repositoryFindGlobalOpenPunch,
+  repositoryGetEntry,
+  repositoryUpdateEntry,
+} from '../../lib/offline/timeEntryRepository'
+import { hasPendingData } from '../../lib/offline/localStore'
 import {
   formatDate,
   formatDisplayDate,
@@ -47,7 +47,8 @@ import { PageHeader } from '../../components/ui'
 import { AlertBanner } from '../../components/AlertBanner'
 
 export function TimesheetPage() {
-  const { profile, user } = useAuth()
+  const { profile } = useAuth()
+  const { mode } = useConnectivity()
   const location = useLocation()
   const [workDate, setWorkDate] = useState(formatDate(new Date()))
   const [entry, setEntry] = useState<TimeEntry | null>(null)
@@ -59,6 +60,7 @@ export function TimesheetPage() {
   const [sessionEditRow, setSessionEditRow] = useState({ clockIn: '', clockOut: '' })
   const [editReason, setEditReason] = useState('')
   const [deleteSessionIndex, setDeleteSessionIndex] = useState<number | null>(null)
+  const [pendingSync, setPendingSync] = useState(false)
 
   const employeeId = profile?.uid ?? ''
   const docId = timeEntryDocId(employeeId, workDate)
@@ -70,33 +72,29 @@ export function TimesheetPage() {
   const showClockIn = !readOnly && !hasGlobalOpen
   const showClockOut = !readOnly && hasGlobalOpen
 
-  const refreshGlobalOpen = async () => {
+  const refreshGlobalOpen = useCallback(async () => {
     if (!employeeId) return
-    const entries = await fetchEmployeeEntries(employeeId)
-    const open = findGlobalOpenPunch(entries)
+    const open = await repositoryFindGlobalOpenPunch(employeeId)
     setGlobalOpenEntryId(open?.entryId ?? null)
-  }
+  }, [employeeId])
 
-  const loadEntry = async () => {
+  const loadEntry = useCallback(async () => {
     if (!employeeId) return
     setLoading(true)
     setError('')
     try {
-      await autoCloseStalePunches(employeeId)
-      const snap = await getDoc(doc(db, 'timeEntries', docId))
-      if (snap.exists()) {
-        setEntry(normalizeEntry({ id: snap.id, ...snap.data() } as TimeEntry))
-      } else {
-        setEntry(null)
-      }
+      await repositoryAutoCloseStalePunches(employeeId)
+      const loaded = await repositoryGetEntry(employeeId, workDate)
+      setEntry(loaded)
       await refreshGlobalOpen()
       setEditingPunchIndex(null)
+      setPendingSync(hasPendingData(employeeId))
     } catch {
       setError('Unable to load timesheet. Please try again or contact your employer.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [employeeId, workDate, refreshGlobalOpen])
 
   useEffect(() => {
     const stateDate = (location.state as { workDate?: string } | null)?.workDate
@@ -105,30 +103,18 @@ export function TimesheetPage() {
 
   useEffect(() => {
     void loadEntry()
-  }, [employeeId, docId, workDate])
+  }, [loadEntry, mode])
 
   const ensureEntry = async (): Promise<TimeEntry> => {
-    const ref = doc(db, 'timeEntries', docId)
-    const snap = await getDoc(ref)
-    if (snap.exists()) return normalizeEntry({ id: snap.id, ...snap.data() } as TimeEntry)
-
-    const newEntry: Omit<TimeEntry, 'id'> = {
-      employeeId,
-      employeeName: profile?.displayName ?? '',
-      workDate,
-      status: 'draft',
-      punches: [],
-    }
-    await setDoc(ref, { ...newEntry, updatedAt: serverTimestamp() })
-    return { id: docId, ...newEntry }
+    return repositoryEnsureEntry(employeeId, profile?.displayName ?? '', workDate)
   }
 
   const handleClockIn = async () => {
     setBusy(true)
     setError('')
     try {
-      await autoCloseStalePunches(employeeId)
-      const entries = await fetchEmployeeEntries(employeeId)
+      await repositoryAutoCloseStalePunches(employeeId)
+      const entries = await repositoryFetchEmployeeEntries(employeeId)
       const open = findGlobalOpenPunch(entries)
       if (open) {
         const dateLabel = formatDisplayDate(open.entry.workDate)
@@ -139,15 +125,12 @@ export function TimesheetPage() {
 
       const current = await ensureEntry()
       const currentPunches = getPunches(current)
-      await updateDoc(doc(db, 'timeEntries', docId), {
+      await repositoryUpdateEntry(employeeId, docId, {
         punches: punchesToFirestoreForWorkDate(workDate, [
           ...currentPunches,
           { clockIn: createClockInTimestamp(workDate), clockOut: null },
         ]),
-        clockIn: null,
-        clockOut: null,
         punchSource: 'button',
-        updatedAt: serverTimestamp(),
       })
       await loadEntry()
     } catch {
@@ -161,26 +144,22 @@ export function TimesheetPage() {
     setBusy(true)
     setError('')
     try {
-      const entries = await fetchEmployeeEntries(employeeId)
-      const open = findGlobalOpenPunch(entries)
+      const open = await repositoryFindGlobalOpenPunch(employeeId)
       if (!open) {
         setError('No open clock-in session found.')
         setGlobalOpenEntryId(null)
         return
       }
 
-      const punches = [...getPunches(open.entry)]
-      punches[open.punchIndex] = {
-        ...punches[open.punchIndex],
+      const openPunches = [...getPunches(open.entry)]
+      openPunches[open.punchIndex] = {
+        ...openPunches[open.punchIndex],
         clockOut: createClockOutTimestamp(open.entry.workDate),
       }
 
-      await updateDoc(doc(db, 'timeEntries', open.entryId), {
-        punches: punchesToFirestoreForWorkDate(open.entry.workDate, punches),
-        clockIn: null,
-        clockOut: null,
+      await repositoryUpdateEntry(employeeId, open.entryId, {
+        punches: punchesToFirestoreForWorkDate(open.entry.workDate, openPunches),
         punchSource: 'button',
-        updatedAt: serverTimestamp(),
       })
       await loadEntry()
     } catch {
@@ -198,12 +177,10 @@ export function TimesheetPage() {
     setBusy(true)
     setError('')
     try {
-      await updateDoc(doc(db, 'timeEntries', docId), {
+      await repositoryUpdateEntry(employeeId, docId, {
         status: 'submitted',
-        submittedAt: serverTimestamp(),
         rejectionReason: null,
         rejectedAt: null,
-        updatedAt: serverTimestamp(),
       })
       await loadEntry()
     } catch {
@@ -251,19 +228,16 @@ export function TimesheetPage() {
       const previousPunches = getPunches(normalizedEntry)
       const historyEntry = {
         editedAt: Timestamp.now(),
-        editedBy: user!.uid,
+        editedBy: profile!.uid,
         editedByName: profile!.displayName,
         reason: editReason.trim(),
         previousPunches: serializePunchesForHistory(previousPunches),
         newPunches: serializePunchesForHistory(replaced.punches),
       }
-      await updateDoc(doc(db, 'timeEntries', docId), {
+      await repositoryUpdateEntry(employeeId, docId, {
         punches: punchesToFirestoreForWorkDate(workDate, replaced.punches),
-        clockIn: null,
-        clockOut: null,
         punchSource: 'manual_edit',
         editHistory: [...(entry?.editHistory ?? []), historyEntry],
-        updatedAt: serverTimestamp(),
       })
       cancelSessionEdit()
       await loadEntry()
@@ -281,14 +255,11 @@ export function TimesheetPage() {
     try {
       const remaining = removePunchAtIndex(normalizedEntry, deleteSessionIndex)
       if (remaining.length === 0) {
-        await deleteDoc(doc(db, 'timeEntries', docId))
+        await repositoryDeleteEntry(employeeId, docId)
         setEntry(null)
       } else {
-        await updateDoc(doc(db, 'timeEntries', docId), {
+        await repositoryUpdateEntry(employeeId, docId, {
           punches: punchesToFirestoreForWorkDate(workDate, remaining),
-          clockIn: null,
-          clockOut: null,
-          updatedAt: serverTimestamp(),
         })
       }
       setDeleteSessionIndex(null)
@@ -323,6 +294,11 @@ export function TimesheetPage() {
           <div className="flex items-center gap-2">
             <span className="text-sm text-slate-600">Status:</span>
             <StatusBadge status={entry.status} />
+            {pendingSync && mode !== 'online' && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                Pending sync
+              </span>
+            )}
           </div>
         )}
 

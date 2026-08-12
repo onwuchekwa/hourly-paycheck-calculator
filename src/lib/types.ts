@@ -4,7 +4,7 @@ export type UserRole = 'admin' | 'employer' | 'employee'
 
 export type TimeEntryStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
 
-export type PunchSource = 'button' | 'manual_edit' | 'auto_eod'
+export type PunchSource = 'button' | 'manual_edit' | 'auto_eod' | 'offline_sync'
 
 export interface TimePunch {
   clockIn: Timestamp

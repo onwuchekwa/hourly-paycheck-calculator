@@ -37,6 +37,25 @@ service cloud.firestore {
       return reason is string && reason.size() >= 10 && reason.size() <= 500;
     }
 
+    function validPunchesList(punches) {
+      return punches is list && punches.size() <= 20;
+    }
+
+    function validOfflineSyncMeta() {
+      return !request.resource.data.keys().hasAny(['offlineSyncMeta'])
+        || (
+          request.resource.data.offlineSyncMeta is map
+          && request.resource.data.offlineSyncMeta.keys().hasOnly(['deviceId', 'syncedAt', 'appVersion', 'localRevision'])
+          && request.resource.data.offlineSyncMeta.deviceId is string
+          && request.resource.data.offlineSyncMeta.deviceId.size() <= 64
+        );
+    }
+
+    function validPunchSource() {
+      return !request.resource.data.keys().hasAny(['punchSource'])
+        || request.resource.data.punchSource in ['button', 'manual_edit', 'auto_eod', 'offline_sync'];
+    }
+
     function isOwnTimeEntryId(entryId) {
       return entryId.matches('^' + request.auth.uid + '_.+');
     }
@@ -103,6 +122,7 @@ service cloud.firestore {
           'submittedAt',
           'rejectionReason',
           'rejectedAt',
+          'offlineSyncMeta',
           'updatedAt',
         ])
         // Employees can never set 'approved'; 'rejected' only persists if the
@@ -111,7 +131,9 @@ service cloud.firestore {
           request.resource.data.status == resource.data.status
           || request.resource.data.status in ['draft', 'submitted']
         )
-        && request.resource.data.punches is list
+        && validPunchesList(request.resource.data.punches)
+        && validPunchSource()
+        && validOfflineSyncMeta()
         && validEditHistoryChange();
     }
 
@@ -140,15 +162,33 @@ service cloud.firestore {
         && request.resource.data.workDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
         // Doc ID must encode the owner and work date: {uid}_{workDate}.
         && entryId == request.auth.uid + '_' + request.resource.data.workDate
-        && request.resource.data.punches is list
-        && request.resource.data.keys().hasOnly([
-          'employeeId',
-          'employeeName',
-          'workDate',
-          'status',
-          'punches',
-          'updatedAt',
-        ]);
+        && validPunchesList(request.resource.data.punches)
+        && (
+          request.resource.data.keys().hasOnly([
+            'employeeId',
+            'employeeName',
+            'workDate',
+            'status',
+            'punches',
+            'updatedAt',
+          ])
+          || (
+            request.resource.data.keys().hasOnly([
+              'employeeId',
+              'employeeName',
+              'workDate',
+              'status',
+              'punches',
+              'punchSource',
+              'offlineSyncMeta',
+              'editHistory',
+              'submittedAt',
+              'updatedAt',
+            ])
+            && validPunchSource()
+            && validOfflineSyncMeta()
+          )
+        );
       allow update: if adminReviewUpdate() || employeeEntryUpdate();
       allow delete: if (
         isEmployee() &&

@@ -1,0 +1,266 @@
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  Timestamp,
+  updateDoc,
+  where,
+} from 'firebase/firestore'
+import { db } from '../firebase'
+import type { TimeEntry } from '../types'
+import {
+  endOfWorkDate,
+  findGlobalOpenPunch,
+  getOpenPunch,
+  getPunches,
+  normalizeEntry,
+  punchesToFirestore,
+  type OpenPunchLocation,
+} from '../timeEntries'
+import { timeEntryDocId, todayString } from '../utils'
+import {
+  getConnectivityMode,
+  isNetworkError,
+  reportConnectivityFailure,
+} from './connectivityState'
+import {
+  getPendingEntries,
+  isLocalStoreAccessible,
+  mergeSnapshotAndPending,
+  setPendingEntries,
+  setSnapshotEntries,
+} from './localStore'
+import { verifyEntryIntegrity, withIntegrity } from './integrity'
+import type { StoredTimeEntry } from './types'
+
+function isDraftOrSubmitted(entry: TimeEntry): boolean {
+  return entry.status === 'draft' || entry.status === 'submitted'
+}
+
+async function toStored(entry: TimeEntry, revision = 1): Promise<StoredTimeEntry> {
+  return withIntegrity({
+    ...entry,
+    syncStatus: 'pending',
+    localUpdatedAt: new Date().toISOString(),
+    localRevision: revision,
+  })
+}
+
+async function readMergedEntries(employeeId: string): Promise<TimeEntry[]> {
+  const merged = await mergeSnapshotAndPending(employeeId)
+  const valid: TimeEntry[] = []
+  for (const entry of merged) {
+    if (entry.integrity && !(await verifyEntryIntegrity(entry))) continue
+    const normalized = normalizeEntry(entry)
+    if (isDraftOrSubmitted(normalized) || normalized.status === 'rejected') {
+      valid.push(normalized)
+    }
+  }
+  return valid
+}
+
+async function firestoreFetchEmployeeEntries(employeeId: string): Promise<TimeEntry[]> {
+  const q = query(
+    collection(db, 'timeEntries'),
+    where('employeeId', '==', employeeId),
+    where('status', 'in', ['draft', 'submitted']),
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => normalizeEntry({ id: d.id, ...d.data() } as TimeEntry))
+}
+
+export async function refreshSnapshot(employeeId: string): Promise<void> {
+  if (!isLocalStoreAccessible(employeeId)) return
+  const entries = await firestoreFetchEmployeeEntries(employeeId)
+  const stored = await Promise.all(
+    entries.map((e) =>
+      withIntegrity({
+        ...e,
+        syncStatus: 'pending',
+        localUpdatedAt: new Date().toISOString(),
+        localRevision: 0,
+      }),
+    ),
+  )
+  await setSnapshotEntries(employeeId, stored)
+}
+
+async function upsertPending(employeeId: string, entry: TimeEntry): Promise<void> {
+  const pending = await getPendingEntries(employeeId)
+  const idx = pending.findIndex((p) => p.id === entry.id)
+  const revision = idx >= 0 ? pending[idx].localRevision + 1 : 1
+  const stored = await toStored(entry, revision)
+  if (idx >= 0) pending[idx] = stored
+  else pending.push(stored)
+  await setPendingEntries(employeeId, pending)
+}
+
+async function writeOffline(employeeId: string, entry: TimeEntry): Promise<TimeEntry> {
+  if (!isLocalStoreAccessible(employeeId)) {
+    throw new Error('Vault is locked. Sign in to continue.')
+  }
+  await upsertPending(employeeId, entry)
+  return normalizeEntry(entry)
+}
+
+export async function repositoryGetEntry(
+  employeeId: string,
+  workDate: string,
+): Promise<TimeEntry | null> {
+  const docId = timeEntryDocId(employeeId, workDate)
+  if (getConnectivityMode() === 'online') {
+    try {
+      const snap = await getDoc(doc(db, 'timeEntries', docId))
+      if (!snap.exists()) return null
+      return normalizeEntry({ id: snap.id, ...snap.data() } as TimeEntry)
+    } catch (err) {
+      if (isNetworkError(err)) reportConnectivityFailure()
+      else throw err
+    }
+  }
+  const merged = await readMergedEntries(employeeId)
+  return merged.find((e) => e.id === docId) ?? null
+}
+
+export async function repositoryFetchEmployeeEntries(employeeId: string): Promise<TimeEntry[]> {
+  if (getConnectivityMode() === 'online') {
+    try {
+      const entries = await firestoreFetchEmployeeEntries(employeeId)
+      await refreshSnapshot(employeeId)
+      return entries
+    } catch (err) {
+      if (isNetworkError(err)) reportConnectivityFailure()
+      else throw err
+    }
+  }
+  return readMergedEntries(employeeId)
+}
+
+export async function repositoryFindGlobalOpenPunch(employeeId: string): Promise<OpenPunchLocation | null> {
+  const entries = await repositoryFetchEmployeeEntries(employeeId)
+  return findGlobalOpenPunch(entries)
+}
+
+export async function repositoryEnsureEntry(
+  employeeId: string,
+  employeeName: string,
+  workDate: string,
+): Promise<TimeEntry> {
+  const docId = timeEntryDocId(employeeId, workDate)
+  const existing = await repositoryGetEntry(employeeId, workDate)
+  if (existing) return existing
+
+  const newEntry: TimeEntry = {
+    id: docId,
+    employeeId,
+    employeeName,
+    workDate,
+    status: 'draft',
+    punches: [],
+  }
+
+  if (getConnectivityMode() === 'online') {
+    try {
+      await setDoc(doc(db, 'timeEntries', docId), {
+        employeeId,
+        employeeName,
+        workDate,
+        status: 'draft',
+        punches: [],
+        updatedAt: serverTimestamp(),
+      })
+      await refreshSnapshot(employeeId)
+      return newEntry
+    } catch (err) {
+      if (!isNetworkError(err)) throw err
+      reportConnectivityFailure()
+    }
+  }
+  return writeOffline(employeeId, newEntry)
+}
+
+export async function repositoryUpdateEntry(
+  employeeId: string,
+  entryId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const workDate = entryId.slice(employeeId.length + 1)
+  const current = await repositoryGetEntry(employeeId, workDate)
+  if (!current) throw new Error('Entry not found')
+
+  const updated = normalizeEntry({ ...current, ...patch, id: entryId } as TimeEntry)
+  const firestorePatch: Record<string, unknown> = {
+    ...patch,
+    punches: punchesToFirestore(getPunches(updated)),
+    clockIn: null,
+    clockOut: null,
+    updatedAt: serverTimestamp(),
+  }
+  if (patch.status === 'submitted') {
+    firestorePatch.submittedAt = serverTimestamp()
+  }
+
+  if (getConnectivityMode() === 'online') {
+    try {
+      await updateDoc(doc(db, 'timeEntries', entryId), firestorePatch)
+      await refreshSnapshot(employeeId)
+      return
+    } catch (err) {
+      if (!isNetworkError(err)) throw err
+      reportConnectivityFailure()
+    }
+  }
+  await writeOffline(employeeId, updated)
+}
+
+export async function repositoryDeleteEntry(employeeId: string, entryId: string): Promise<void> {
+  if (getConnectivityMode() === 'online') {
+    try {
+      await deleteDoc(doc(db, 'timeEntries', entryId))
+      await refreshSnapshot(employeeId)
+      const pending = await getPendingEntries(employeeId)
+      await setPendingEntries(
+        employeeId,
+        pending.filter((p) => p.id !== entryId),
+      )
+      return
+    } catch (err) {
+      if (!isNetworkError(err)) throw err
+      reportConnectivityFailure()
+    }
+  }
+  const pending = await getPendingEntries(employeeId)
+  await setPendingEntries(
+    employeeId,
+    pending.filter((p) => p.id !== entryId),
+  )
+}
+
+export async function repositoryAutoCloseStalePunches(employeeId: string): Promise<void> {
+  const today = todayString()
+  const entries = await repositoryFetchEmployeeEntries(employeeId)
+
+  for (const entry of entries) {
+    if (entry.workDate >= today) continue
+    const open = getOpenPunch(entry)
+    if (!open) continue
+
+    const punches = [...getPunches(entry)]
+    punches[open.index] = {
+      ...punches[open.index],
+      clockOut: Timestamp.fromDate(endOfWorkDate(entry.workDate)),
+    }
+
+    await repositoryUpdateEntry(employeeId, entry.id, {
+      punches: punchesToFirestore(punches),
+      punchSource: 'auto_eod',
+    })
+  }
+}
+
+export { getPendingEntries }

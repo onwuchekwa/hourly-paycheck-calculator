@@ -5,6 +5,7 @@ import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { MobileDrawer } from './ui/MobileDrawer'
 import { classNames } from '../lib/utils'
 import { isAdminRole } from '../lib/roles'
+import { OfflineBanner } from './OfflineBanner'
 
 interface NavItem {
   to: string
@@ -362,6 +363,7 @@ export function Layout() {
       </MobileDrawer>
 
       <main id="main-content" className="mx-auto max-w-7xl px-4 py-6 pb-safe sm:px-6 sm:py-8">
+        <OfflineBanner />
         <Outlet />
       </main>
     </div>

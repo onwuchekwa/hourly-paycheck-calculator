@@ -15,7 +15,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test:rules": "npx firebase-tools@latest emulators:exec --only firestore \"vitest run tests/firestore-rules.test.ts\"",
-    "test:offline": "vitest run tests/offline-serialization.test.ts tests/offline-integrity.test.ts"
+    "test:offline": "vitest run tests/offline-serialization.test.ts tests/offline-integrity.test.ts tests/offline-auth.test.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.3.0",

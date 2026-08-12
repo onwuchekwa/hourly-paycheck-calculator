@@ -11,6 +11,7 @@ import { punchesToFirestore, getPunches, normalizeEntry } from '../timeEntries'
 import { getConnectivityMode } from './connectivityState'
 import { getDeviceId, isVaultUnlocked } from './encryptedVault'
 import { verifyEntryIntegrity } from './integrity'
+import { isUserActive } from './profileValidator'
 import {
   clearPendingData,
   getPendingEntries,
@@ -62,6 +63,16 @@ export async function flushSync(employeeId: string): Promise<SyncResult> {
   syncing = true
 
   try {
+    const userSnap = await getDoc(doc(db, 'users', employeeId))
+    if (!userSnap.exists()) {
+      result.errors.push('User profile not found — sync blocked')
+      return result
+    }
+    if (!isUserActive(userSnap.data() as { active?: boolean })) {
+      result.errors.push('Account deactivated — sync blocked')
+      return result
+    }
+
     const pending = await getPendingEntries(employeeId)
     const sorted = [...pending].sort(
       (a, b) => Date.parse(a.localUpdatedAt) - Date.parse(b.localUpdatedAt),

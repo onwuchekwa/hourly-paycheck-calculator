@@ -1,4 +1,6 @@
 import { argon2id } from '@noble/hashes/argon2.js'
+import type { UserProfile } from '../types'
+import { fromUserProfile, normalizeVaultProfile } from './profileValidator'
 import type { UnlockAttempts, VaultProfilePayload } from './types'
 import { LOCKOUT_MS, MAX_UNLOCK_ATTEMPTS, VAULT_VERSION } from './types'
 
@@ -118,27 +120,18 @@ function devicePepper(): Uint8Array {
   return new TextEncoder().encode(getDeviceId())
 }
 
+async function devicePepperKey(usages: KeyUsage[]): Promise<CryptoKey> {
+  const hash = await crypto.subtle.digest('SHA-256', devicePepper().buffer as ArrayBuffer)
+  return crypto.subtle.importKey('raw', hash, { name: 'AES-GCM' }, false, usages)
+}
+
 async function encryptUnlockAttempts(data: UnlockAttempts): Promise<string> {
-  const pepper = devicePepper()
-  const pepperKey = await crypto.subtle.importKey(
-    'raw',
-    pepper.buffer as ArrayBuffer,
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt'],
-  )
+  const pepperKey = await devicePepperKey(['encrypt'])
   return encryptJson(pepperKey as CryptoKey, data)
 }
 
 async function decryptUnlockAttempts(blob: string): Promise<UnlockAttempts> {
-  const pepper = devicePepper()
-  const pepperKey = await crypto.subtle.importKey(
-    'raw',
-    pepper.buffer as ArrayBuffer,
-    { name: 'AES-GCM' },
-    false,
-    ['decrypt'],
-  )
+  const pepperKey = await devicePepperKey(['decrypt'])
   return decryptJson<UnlockAttempts>(pepperKey as CryptoKey, blob)
 }
 
@@ -199,11 +192,10 @@ export async function unlockVaultWithPassword(
   if (!blob) return null
 
   try {
-    const payload = await decryptJson<VaultProfilePayload>(key, blob)
-    await setSessionKey(key, employeeId)
-    await resetUnlockAttempts()
-    touchLastActiveAt()
-    return payload
+    const raw = await decryptJson<VaultProfilePayload>(key, blob)
+    const profile = normalizeVaultProfile(raw.profile)
+    if (!profile) return null
+    return { ...raw, profile, vaultVersion: raw.vaultVersion ?? VAULT_VERSION }
   } catch {
     await recordUnlockFailure()
     return null
@@ -213,12 +205,13 @@ export async function unlockVaultWithPassword(
 export async function saveProfileVault(
   employeeId: string,
   password: string,
-  profile: VaultProfilePayload['profile'],
+  profile: UserProfile,
+  sourceRev?: number,
 ): Promise<void> {
   const salt = getOrCreateSalt(employeeId)
   const key = await deriveKey(password, salt)
   const payload: VaultProfilePayload = {
-    profile,
+    profile: fromUserProfile(profile, sourceRev),
     deviceId: getDeviceId(),
     vaultVersion: VAULT_VERSION,
   }
@@ -228,13 +221,32 @@ export async function saveProfileVault(
   touchLastActiveAt()
 }
 
+export async function updateProfileVaultFromSession(
+  employeeId: string,
+  profile: UserProfile,
+  sourceRev?: number,
+): Promise<void> {
+  const key = await getSessionKey()
+  if (!key || getSessionEmployeeId() !== employeeId) return
+  const payload: VaultProfilePayload = {
+    profile: fromUserProfile(profile, sourceRev),
+    deviceId: getDeviceId(),
+    vaultVersion: VAULT_VERSION,
+  }
+  localStorage.setItem(PROFILE_PREFIX + employeeId, await encryptJson(key, payload))
+  touchLastActiveAt()
+}
+
 export async function loadProfileFromVault(employeeId: string): Promise<VaultProfilePayload | null> {
   const key = await getSessionKey()
   if (!key || getSessionEmployeeId() !== employeeId) return null
   const blob = localStorage.getItem(PROFILE_PREFIX + employeeId)
   if (!blob) return null
   try {
-    return await decryptJson<VaultProfilePayload>(key, blob)
+    const raw = await decryptJson<VaultProfilePayload>(key, blob)
+    const profile = normalizeVaultProfile(raw.profile)
+    if (!profile) return null
+    return { ...raw, profile, vaultVersion: raw.vaultVersion ?? VAULT_VERSION }
   } catch {
     return null
   }
@@ -274,12 +286,14 @@ export async function unlockVaultByEmail(
     const blob = localStorage.getItem(key)
     if (!blob) continue
     try {
-      const payload = await decryptJson<VaultProfilePayload>(derivedKey, blob)
-      if (payload.profile.email?.toLowerCase() !== email.trim().toLowerCase()) continue
+      const raw = await decryptJson<VaultProfilePayload>(derivedKey, blob)
+      const profile = normalizeVaultProfile(raw.profile)
+      if (!profile) continue
+      if (profile.email?.toLowerCase() !== email.trim().toLowerCase()) continue
       await setSessionKey(derivedKey, employeeId)
       await resetUnlockAttempts()
       touchLastActiveAt()
-      return { employeeId, payload }
+      return { employeeId, payload: { ...raw, profile, vaultVersion: raw.vaultVersion ?? VAULT_VERSION } }
     } catch {
       // try next vault
     }

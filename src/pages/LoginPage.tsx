@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { AlertBanner } from '../components/AlertBanner'
@@ -7,17 +7,33 @@ import { LoadingSpinner } from '../components/LoadingSpinner'
 import { useFirebaseEmulators } from '../lib/firebase-config'
 import { getAuthErrorMessage } from '../lib/errors'
 import { adminHomePath } from '../lib/roles'
-import { isUnlockLockedOut } from '../lib/offline/encryptedVault'
+import { hasProfileVault, isUnlockLockedOut } from '../lib/offline/encryptedVault'
 
 export function LoginPage() {
-  const { login, user, profile, loading, isOfflineSession, vaultLocked } = useAuth()
+  const {
+    login,
+    user,
+    profile,
+    loading,
+    isOfflineSession,
+    vaultLocked,
+    needsVaultUnlock,
+    logoutMessage,
+    clearLogoutMessage,
+  } = useAuth()
   const { appTitle } = useCompanySettings()
+  const location = useLocation()
+  const unlockRequired = Boolean(location.state?.unlockRequired) || needsVaultUnlock
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const usingEmulators = useFirebaseEmulators()
   const offline = !navigator.onLine
+
+  useEffect(() => {
+    if (user?.email && !email) setEmail(user.email)
+  }, [user?.email, email])
 
   if (loading) return <LoadingSpinner fullPage />
 
@@ -26,18 +42,15 @@ export function LoginPage() {
     return <Navigate to={adminHomePath(profile.role)} replace />
   }
 
-  if (user && !profile) {
+  if (user && !profile && !needsVaultUnlock && !hasProfileVault(user.uid)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-8">
         <div className="card w-full max-w-md space-y-4 border border-slate-200 shadow-md">
           <h1 className="text-xl font-bold text-slate-900">Account setup incomplete</h1>
           <AlertBanner variant="error">
-            You signed in successfully, but your Firestore user profile is missing. An admin must
-            create a document at{' '}
-            <code className="rounded bg-white px-1">users/{user.uid}</code> with{' '}
-            <code className="rounded bg-white px-1">role: &quot;admin&quot;</code> (or{' '}
-            <code className="rounded bg-white px-1">&quot;employer&quot;</code>), your display name,
-            and <code className="rounded bg-white px-1">active: true</code>.
+            You signed in successfully, but your employer has not finished setting up your account.
+            Ask an admin to create your employee record in Admin → Employees, then sign in again
+            online once to enable offline access on this device.
           </AlertBanner>
           <p className="text-sm text-slate-600">
             Signed in as <strong>{user.email}</strong>
@@ -60,6 +73,7 @@ export function LoginPage() {
         setError(`Too many failed attempts. Try again after ${lockout.lockedUntil?.toLocaleTimeString()}.`)
         return
       }
+      clearLogoutMessage()
       await login(email, password)
     } catch (err) {
       setError(getAuthErrorMessage(err))
@@ -81,15 +95,22 @@ export function LoginPage() {
           </p>
         </div>
 
-        {vaultLocked && user && (
-          <AlertBanner variant="info" className="mb-4">
-            Session locked. Enter your password to unlock your timesheet.
+        {logoutMessage && (
+          <AlertBanner variant="warning" className="mb-4">
+            {logoutMessage}
           </AlertBanner>
         )}
 
-        {offline && !vaultLocked && (
+        {(unlockRequired || vaultLocked) && (
           <AlertBanner variant="info" className="mb-4">
-            You are offline. Employees can unlock with a password if they have signed in on this device before.
+            Session expired — enter your password to continue offline.
+          </AlertBanner>
+        )}
+
+        {offline && !unlockRequired && !vaultLocked && (
+          <AlertBanner variant="info" className="mb-4">
+            You are offline. Sign in online once on this device to enable offline access, then use
+            your password here to unlock.
           </AlertBanner>
         )}
 
@@ -124,7 +145,11 @@ export function LoginPage() {
             />
           </div>
           <button type="submit" disabled={submitting} className="btn-primary w-full">
-            {submitting ? 'Signing in…' : offline ? 'Unlock offline' : 'Sign in'}
+            {submitting
+              ? 'Signing in…'
+              : offline || unlockRequired || vaultLocked
+                ? 'Unlock offline'
+                : 'Sign in'}
           </button>
         </form>
 

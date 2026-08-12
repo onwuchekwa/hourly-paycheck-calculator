@@ -10,7 +10,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ role }: ProtectedRouteProps) {
-  const { user, profile, loading, isOfflineSession, vaultLocked } = useAuth()
+  const { user, profile, loading, isOfflineSession, vaultLocked, needsVaultUnlock } = useAuth()
   const { isOnline } = useConnectivity()
 
   if (loading) return <LoadingSpinner fullPage />
@@ -18,7 +18,8 @@ export function ProtectedRoute({ role }: ProtectedRouteProps) {
   const authenticated = (user || isOfflineSession) && profile
 
   if (!authenticated) {
-    return <Navigate to="/login" replace />
+    const unlockRequired = vaultLocked || needsVaultUnlock
+    return <Navigate to="/login" replace state={unlockRequired ? { unlockRequired: true } : undefined} />
   }
 
   if (vaultLocked && role === 'employee') {

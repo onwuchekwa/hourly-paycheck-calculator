@@ -1,6 +1,15 @@
-import type { TimeEntry, TimeEntryStatus, PunchSource, UserProfile } from '../types'
+import type { TimeEntry, TimeEntryStatus, PunchSource } from '../types'
 
 export type ConnectivityMode = 'online' | 'degraded' | 'offline'
+
+export interface OfflineProfile {
+  uid: string
+  email: string
+  displayName: string
+  role: 'employee'
+  cachedAt: string
+  sourceRev?: number
+}
 
 export interface OfflineSyncMeta {
   deviceId: string
@@ -17,7 +26,7 @@ export interface StoredTimeEntry extends TimeEntry {
 }
 
 export interface VaultProfilePayload {
-  profile: UserProfile
+  profile: OfflineProfile
   deviceId: string
   vaultVersion: number
 }
@@ -50,7 +59,7 @@ export type JsonTimeEntry = Omit<
 }
 
 export const APP_VERSION = '1.0.0'
-export const VAULT_VERSION = 1
+export const VAULT_VERSION = 2
 export const INACTIVITY_MS = 30 * 60 * 1000
 export const MAX_UNLOCK_ATTEMPTS = 5
 export const LOCKOUT_MS = 15 * 60 * 1000

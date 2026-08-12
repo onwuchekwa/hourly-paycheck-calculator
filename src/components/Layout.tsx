@@ -6,6 +6,7 @@ import { MobileDrawer } from './ui/MobileDrawer'
 import { classNames } from '../lib/utils'
 import { isAdminRole } from '../lib/roles'
 import { OfflineBanner } from './OfflineBanner'
+import { OfflineEnrollmentPrompt } from './OfflineEnrollmentPrompt'
 
 interface NavItem {
   to: string
@@ -364,6 +365,7 @@ export function Layout() {
 
       <main id="main-content" className="mx-auto max-w-7xl px-4 py-6 pb-safe sm:px-6 sm:py-8">
         <OfflineBanner />
+        {!isAdmin && <OfflineEnrollmentPrompt />}
         <Outlet />
       </main>
     </div>

@@ -1,14 +1,19 @@
 /**
  * @vitest-environment jsdom
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearSessionKey,
+  hasAnyProfileVault,
   hasProfileVault,
+  listProfileVaultIds,
   saveProfileVault,
+  setLastOfflineEmail,
+  getLastOfflineEmail,
   unlockVaultByEmail,
   unlockVaultWithPassword,
 } from '../src/lib/offline/encryptedVault'
+import { fetchProfileForUid, shouldPromptOfflineEnrollment } from '../src/lib/offline/profileFetch'
 import {
   fromUserProfile,
   isProfileCacheExpired,
@@ -134,5 +139,61 @@ describe('offline vault auth', () => {
 
     expect(hasProfileVault('emp1')).toBe(true)
     expect(sessionStorage.getItem('payroll:sessionKey')).toBeNull()
+  })
+
+  it('detects any profile vault on device', async () => {
+    expect(hasAnyProfileVault()).toBe(false)
+    await saveProfileVault('emp1', 'secret-pass', employeeProfile)
+    expect(hasAnyProfileVault()).toBe(true)
+    expect(listProfileVaultIds()).toEqual(['emp1'])
+  })
+
+  it('stores last offline email for login pre-fill', () => {
+    setLastOfflineEmail('Employee@Test.com')
+    expect(getLastOfflineEmail()).toBe('employee@test.com')
+  })
+})
+
+describe('profileFetch', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    clearSessionKey()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('returns needsVaultUnlock when offline with vault but no session key', async () => {
+    vi.stubGlobal('navigator', { ...navigator, onLine: false })
+    await saveProfileVault('emp1', 'secret-pass', employeeProfile)
+    clearSessionKey()
+
+    const result = await fetchProfileForUid('emp1')
+    expect(result).toEqual({ profile: null, needsVaultUnlock: true })
+  })
+
+  it('returns profile from vault when offline and session unlocked', async () => {
+    vi.stubGlobal('navigator', { ...navigator, onLine: false })
+    await saveProfileVault('emp1', 'secret-pass', employeeProfile)
+
+    const result = await fetchProfileForUid('emp1')
+    expect(result.needsVaultUnlock).toBe(false)
+    expect(result.profile?.email).toBe('employee@test.com')
+  })
+
+  it('prompts offline enrollment only for online employees without vault', () => {
+    vi.stubGlobal('navigator', { ...navigator, onLine: true })
+    expect(shouldPromptOfflineEnrollment(employeeProfile, 'emp1')).toBe(true)
+
+    vi.stubGlobal('navigator', { ...navigator, onLine: false })
+    expect(shouldPromptOfflineEnrollment(employeeProfile, 'emp1')).toBe(false)
+  })
+
+  it('does not prompt enrollment when vault already exists', async () => {
+    vi.stubGlobal('navigator', { ...navigator, onLine: true })
+    await saveProfileVault('emp1', 'secret-pass', employeeProfile)
+    expect(shouldPromptOfflineEnrollment(employeeProfile, 'emp1')).toBe(false)
   })
 })

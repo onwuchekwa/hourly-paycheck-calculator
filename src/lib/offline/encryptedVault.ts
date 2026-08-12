@@ -11,6 +11,7 @@ const LAST_ACTIVE = 'payroll:lastActiveAt'
 const SALT_PREFIX = 'payroll:vault:salt:'
 const PROFILE_PREFIX = 'payroll:vault:profile:'
 const UNLOCK_ATTEMPTS = 'payroll:unlockAttempts'
+const LAST_OFFLINE_EMAIL = 'payroll:lastOfflineEmail'
 
 const ARGON2_OPTS = { t: 3, m: 16384, p: 1, dkLen: 32 } // 16 MB memory for browser practicality
 
@@ -254,6 +255,29 @@ export async function loadProfileFromVault(employeeId: string): Promise<VaultPro
 
 export function hasProfileVault(employeeId: string): boolean {
   return localStorage.getItem(PROFILE_PREFIX + employeeId) !== null
+}
+
+export function listProfileVaultIds(): string[] {
+  const ids: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key?.startsWith(PROFILE_PREFIX)) {
+      ids.push(key.slice(PROFILE_PREFIX.length))
+    }
+  }
+  return ids
+}
+
+export function hasAnyProfileVault(): boolean {
+  return listProfileVaultIds().length > 0
+}
+
+export function getLastOfflineEmail(): string | null {
+  return localStorage.getItem(LAST_OFFLINE_EMAIL)
+}
+
+export function setLastOfflineEmail(email: string): void {
+  localStorage.setItem(LAST_OFFLINE_EMAIL, email.trim().toLowerCase())
 }
 
 export async function findEmployeeIdByEmail(email: string): Promise<string | null> {

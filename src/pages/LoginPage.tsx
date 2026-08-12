@@ -7,7 +7,12 @@ import { LoadingSpinner } from '../components/LoadingSpinner'
 import { useFirebaseEmulators } from '../lib/firebase-config'
 import { getAuthErrorMessage } from '../lib/errors'
 import { adminHomePath } from '../lib/roles'
-import { hasProfileVault, isUnlockLockedOut } from '../lib/offline/encryptedVault'
+import {
+  getLastOfflineEmail,
+  hasAnyProfileVault,
+  hasProfileVault,
+  isUnlockLockedOut,
+} from '../lib/offline/encryptedVault'
 
 export function LoginPage() {
   const {
@@ -32,8 +37,15 @@ export function LoginPage() {
   const offline = !navigator.onLine
 
   useEffect(() => {
-    if (user?.email && !email) setEmail(user.email)
-  }, [user?.email, email])
+    if (user?.email && !email) {
+      setEmail(user.email)
+      return
+    }
+    if (!email && (unlockRequired || vaultLocked || offline)) {
+      const last = getLastOfflineEmail()
+      if (last) setEmail(last)
+    }
+  }, [user?.email, email, unlockRequired, vaultLocked, offline])
 
   if (loading) return <LoadingSpinner fullPage />
 
@@ -42,7 +54,7 @@ export function LoginPage() {
     return <Navigate to={adminHomePath(profile.role)} replace />
   }
 
-  if (user && !profile && !needsVaultUnlock && !hasProfileVault(user.uid)) {
+  if (user && !profile && !needsVaultUnlock && !hasProfileVault(user.uid) && !offline) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-8">
         <div className="card w-full max-w-md space-y-4 border border-slate-200 shadow-md">
@@ -107,10 +119,16 @@ export function LoginPage() {
           </AlertBanner>
         )}
 
-        {offline && !unlockRequired && !vaultLocked && (
+        {offline && !unlockRequired && !vaultLocked && !hasAnyProfileVault() && (
           <AlertBanner variant="info" className="mb-4">
             You are offline. Sign in online once on this device to enable offline access, then use
             your password here to unlock.
+          </AlertBanner>
+        )}
+
+        {offline && !unlockRequired && !vaultLocked && hasAnyProfileVault() && (
+          <AlertBanner variant="info" className="mb-4">
+            You are offline. Enter your password to unlock your timesheet.
           </AlertBanner>
         )}
 

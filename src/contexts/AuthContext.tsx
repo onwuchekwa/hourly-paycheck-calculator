@@ -22,14 +22,17 @@ import type { UserProfile } from '../lib/types'
 import { isAdminRole } from '../lib/roles'
 import {
   clearSessionKey,
+  hasAnyProfileVault,
   hasProfileVault,
   isVaultUnlocked,
   loadProfileFromVault,
   saveProfileVault,
+  setLastOfflineEmail,
   touchLastActiveAt,
   unlockVaultByEmail,
   updateProfileVaultFromSession,
 } from '../lib/offline/encryptedVault'
+import { fetchProfileForUid, shouldPromptOfflineEnrollment } from '../lib/offline/profileFetch'
 import {
   isProfileCacheExpired,
   isUserActive,
@@ -41,11 +44,6 @@ import { clearPendingData } from '../lib/offline/localStore'
 
 const LOGOUT_MESSAGE_KEY = 'payroll:logoutMessage'
 
-interface FetchProfileResult {
-  profile: UserProfile | null
-  needsVaultUnlock: boolean
-}
-
 interface AuthContextValue {
   user: User | null
   profile: UserProfile | null
@@ -53,50 +51,17 @@ interface AuthContextValue {
   isOfflineSession: boolean
   vaultLocked: boolean
   needsVaultUnlock: boolean
+  needsOfflineEnrollment: boolean
   logoutMessage: string | null
   clearLogoutMessage: () => void
   login: (email: string, password: string) => Promise<void>
   logout: (message?: string) => Promise<void>
+  enrollOfflineAccess: (password: string) => Promise<void>
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>
   refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
-
-async function fetchProfileForUid(uid: string): Promise<FetchProfileResult> {
-  const vaultExists = hasProfileVault(uid)
-
-  const loadUnlockedVault = async (): Promise<UserProfile | null> => {
-    if (!isVaultUnlocked()) return null
-    const vault = await loadProfileFromVault(uid)
-    if (!vault) return null
-    const validation = validateOfflineProfile(vault.profile)
-    if (!validation.valid) return null
-    return toUserProfile(vault.profile)
-  }
-
-  try {
-    const snap = await getDoc(doc(db, 'users', uid))
-    if (snap.exists()) {
-      return { profile: { uid, ...snap.data() } as UserProfile, needsVaultUnlock: false }
-    }
-    if (vaultExists && isVaultUnlocked()) {
-      const cached = await loadUnlockedVault()
-      if (cached) return { profile: cached, needsVaultUnlock: false }
-    }
-    if (vaultExists && !isVaultUnlocked()) {
-      return { profile: null, needsVaultUnlock: true }
-    }
-    return { profile: null, needsVaultUnlock: false }
-  } catch {
-    const cached = await loadUnlockedVault()
-    if (cached) return { profile: cached, needsVaultUnlock: false }
-    if (vaultExists && !isVaultUnlocked()) {
-      return { profile: null, needsVaultUnlock: true }
-    }
-    return { profile: null, needsVaultUnlock: false }
-  }
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -104,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [isOfflineSession, setIsOfflineSession] = useState(false)
   const [needsVaultUnlock, setNeedsVaultUnlock] = useState(false)
+  const [needsOfflineEnrollment, setNeedsOfflineEnrollment] = useState(false)
   const [logoutMessage, setLogoutMessage] = useState<string | null>(() =>
     sessionStorage.getItem(LOGOUT_MESSAGE_KEY),
   )
@@ -113,15 +79,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLogoutMessage(null)
   }, [])
 
-  const applyFetchResult = useCallback((result: FetchProfileResult) => {
-    setProfile(result.profile)
-    setNeedsVaultUnlock(result.needsVaultUnlock)
-  }, [])
+  const applyFetchResult = useCallback(
+    (result: Awaited<ReturnType<typeof fetchProfileForUid>>, uid: string) => {
+      setProfile(result.profile)
+      setNeedsVaultUnlock(result.needsVaultUnlock)
+      setNeedsOfflineEnrollment(shouldPromptOfflineEnrollment(result.profile, uid))
+    },
+    [],
+  )
 
   const refreshProfile = useCallback(async () => {
     if (!user) return
     const result = await fetchProfileForUid(user.uid)
-    applyFetchResult(result)
+    applyFetchResult(result, user.uid)
   }, [user, applyFetchResult])
 
   const logout = useCallback(async (message?: string) => {
@@ -129,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsOfflineSession(false)
     setProfile(null)
     setNeedsVaultUnlock(false)
+    setNeedsOfflineEnrollment(false)
     if (message) {
       sessionStorage.setItem(LOGOUT_MESSAGE_KEY, message)
       setLogoutMessage(message)
@@ -136,17 +107,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(auth).catch(() => {})
   }, [])
 
+  const handleOfflineAuthBootstrap = useCallback(async (u: User | null) => {
+    if (navigator.onLine || !u) return u
+
+    const vaultForUser = hasProfileVault(u.uid)
+    const anyVault = hasAnyProfileVault()
+
+    if (!vaultForUser && anyVault) {
+      await signOut(auth).catch(() => {})
+      setUser(null)
+      setProfile(null)
+      setNeedsVaultUnlock(true)
+      setNeedsOfflineEnrollment(false)
+      setIsOfflineSession(false)
+      return null
+    }
+
+    if (!vaultForUser && !anyVault) {
+      await signOut(auth).catch(() => {})
+      setUser(null)
+      setProfile(null)
+      setNeedsVaultUnlock(false)
+      setNeedsOfflineEnrollment(false)
+      setIsOfflineSession(false)
+      return null
+    }
+
+    return u
+  }, [])
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      setUser(u)
       setIsOfflineSession(false)
+      setNeedsOfflineEnrollment(false)
 
-      if (u) {
-        const result = await fetchProfileForUid(u.uid)
-        applyFetchResult(result)
+      const effectiveUser = await handleOfflineAuthBootstrap(u)
+      setUser(effectiveUser)
+
+      if (effectiveUser) {
+        const result = await fetchProfileForUid(effectiveUser.uid)
+        applyFetchResult(result, effectiveUser.uid)
         if (result.profile && isEmployeeRole(result.profile.role) && isVaultUnlocked()) {
           touchLastActiveAt()
         }
+      } else if (!navigator.onLine && hasAnyProfileVault()) {
+        setProfile(null)
+        setNeedsVaultUnlock(true)
       } else if (isVaultUnlocked()) {
         const employeeId = sessionStorage.getItem('payroll:sessionEmployeeId')
         if (employeeId) {
@@ -176,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })
     return unsub
-  }, [applyFetchResult])
+  }, [applyFetchResult, handleOfflineAuthBootstrap])
 
   useEffect(() => {
     if (!user || !navigator.onLine) return
@@ -210,6 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             clearSessionKey()
             setProfile(serverProfile)
             setNeedsVaultUnlock(true)
+            setNeedsOfflineEnrollment(false)
             setIsOfflineSession(false)
             sessionStorage.setItem(
               LOGOUT_MESSAGE_KEY,
@@ -228,6 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setProfile(serverProfile)
         setNeedsVaultUnlock(false)
+        setNeedsOfflineEnrollment(shouldPromptOfflineEnrollment(serverProfile, user.uid))
         setIsOfflineSession(false)
       } catch {
         // Keep cached profile when Firestore is unreachable
@@ -239,6 +247,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void revalidate()
     return () => window.removeEventListener('online', onOnline)
   }, [user, profile, logout])
+
+  const enrollOfflineAccess = useCallback(
+    async (password: string) => {
+      if (!user?.email || !profile || !isEmployeeRole(profile.role)) {
+        throw new Error('Not authenticated')
+      }
+      if (hasProfileVault(user.uid)) {
+        setNeedsOfflineEnrollment(false)
+        return
+      }
+      const credential = EmailAuthProvider.credential(user.email, password)
+      await reauthenticateWithCredential(user, credential)
+      await saveProfileVault(user.uid, password, profile)
+      setLastOfflineEmail(profile.email)
+      setNeedsOfflineEnrollment(false)
+      clearLogoutMessage()
+    },
+    [user, profile, clearLogoutMessage],
+  )
 
   const login = useCallback(
     async (email: string, password: string) => {
@@ -265,7 +292,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(toUserProfile(unlocked.payload.profile))
         setIsOfflineSession(true)
         setNeedsVaultUnlock(false)
+        setNeedsOfflineEnrollment(false)
         setUser(null)
+        setLastOfflineEmail(unlocked.payload.profile.email)
         clearLogoutMessage()
         return
       }
@@ -288,9 +317,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const sourceRev =
           updatedAt && typeof updatedAt.toMillis === 'function' ? updatedAt.toMillis() : undefined
         await saveProfileVault(current.uid, password, p, sourceRev)
+        setLastOfflineEmail(p.email)
       }
       setProfile(p)
       setNeedsVaultUnlock(false)
+      setNeedsOfflineEnrollment(false)
       setIsOfflineSession(false)
       clearLogoutMessage()
     },
@@ -332,10 +363,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isOfflineSession,
       vaultLocked,
       needsVaultUnlock,
+      needsOfflineEnrollment,
       logoutMessage,
       clearLogoutMessage,
       login,
       logout,
+      enrollOfflineAccess,
       changePassword,
       refreshProfile,
     }),
@@ -346,10 +379,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isOfflineSession,
       vaultLocked,
       needsVaultUnlock,
+      needsOfflineEnrollment,
       logoutMessage,
       clearLogoutMessage,
       login,
       logout,
+      enrollOfflineAccess,
       changePassword,
       refreshProfile,
     ],

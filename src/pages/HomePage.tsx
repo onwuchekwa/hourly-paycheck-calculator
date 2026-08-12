@@ -1,12 +1,13 @@
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
+import { CompanyBranding } from '../components/CompanyBranding'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { adminHomePath } from '../lib/roles'
 
 export function HomePage() {
   const { user, profile, loading } = useAuth()
-  const { appTitle } = useCompanySettings()
+  const { appTitle, logoDataUrl, showLogo } = useCompanySettings()
 
   if (loading) return <LoadingSpinner fullPage />
 
@@ -18,7 +19,13 @@ export function HomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50 to-white">
       <header className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6 sm:py-6">
-        <span className="truncate text-lg font-bold text-brand-800 sm:text-xl">{appTitle}</span>
+        <CompanyBranding
+          name={appTitle}
+          logoDataUrl={logoDataUrl}
+          showLogo={showLogo}
+          size="md"
+          nameClassName="text-brand-800"
+        />
         <Link to="/login" className="btn-primary shrink-0">
           Sign in
         </Link>

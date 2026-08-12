@@ -185,6 +185,8 @@ export interface PaySlip {
   companyName: string
   companyAddress?: string
   companyPhone?: string
+  companyLogoDataUrl?: string
+  showCompanyLogo?: boolean
   lineItems: PaySlipDayLine[]
   taxYear?: number
   taxRate?: number
@@ -199,6 +201,8 @@ export interface CompanySettings {
   address?: string
   phone?: string
   email?: string
+  logoDataUrl?: string
+  showLogo?: boolean
   paySlipCounterYear?: number
   paySlipCounter?: number
 }

@@ -4,7 +4,8 @@ import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
 import { apiPost } from '../../lib/api'
 import { db } from '../../lib/firebase'
 import type { PaySlip } from '../../lib/types'
-import { resolveCompanyField, resolveCompanyName } from '../../lib/companyBranding'
+import { resolveCompanyField, resolveCompanyName, resolveLogoDataUrl, resolveShowLogo } from '../../lib/companyBranding'
+import { CompanyBranding } from '../../components/CompanyBranding'
 import { getCallableErrorMessage } from '../../lib/errors'
 import { formatDisplayDate } from '../../lib/utils'
 import { useCompanySettings } from '../../contexts/CompanySettingsContext'
@@ -29,6 +30,14 @@ export function PaySlipViewPage() {
   const companyName = resolveCompanyName(slips[0]?.companyName, settings.companyName)
   const companyAddress = resolveCompanyField(slips[0]?.companyAddress, settings.address)
   const companyPhone = resolveCompanyField(slips[0]?.companyPhone, settings.phone)
+  const snapshot = slips[0]
+  const hasLogo = Boolean(snapshot?.companyLogoDataUrl?.trim() || settings.logoDataUrl?.trim())
+  const showCompanyLogo = resolveShowLogo(snapshot?.showCompanyLogo, settings.showLogo, hasLogo)
+  const logoDataUrl = resolveLogoDataUrl(
+    snapshot?.companyLogoDataUrl,
+    settings.logoDataUrl,
+    showCompanyLogo,
+  )
 
   useEffect(() => {
     const load = async () => {
@@ -99,14 +108,23 @@ export function PaySlipViewPage() {
         <div className="mt-8 space-y-6">
           <div className="card">
             <div className="border-b border-slate-200 pb-4 mb-4">
-              <h2 className="text-xl font-bold text-slate-900">{companyName}</h2>
-              {companyAddress && (
-                <p className="mt-1 whitespace-pre-line text-sm text-slate-600">{companyAddress}</p>
-              )}
-              {companyPhone && <p className="mt-1 text-sm text-slate-600">{companyPhone}</p>}
-              {periodLabel && (
-                <p className="mt-2 text-sm font-medium text-brand-700">Pay period: {periodLabel}</p>
-              )}
+              <CompanyBranding
+                name={companyName}
+                logoDataUrl={logoDataUrl}
+                showLogo={showCompanyLogo}
+                size="lg"
+                subtitle={
+                  <>
+                    {companyAddress && (
+                      <p className="mt-1 whitespace-pre-line text-sm text-slate-600">{companyAddress}</p>
+                    )}
+                    {companyPhone && <p className="mt-1 text-sm text-slate-600">{companyPhone}</p>}
+                    {periodLabel && (
+                      <p className="mt-2 text-sm font-medium text-brand-700">Pay period: {periodLabel}</p>
+                    )}
+                  </>
+                }
+              />
             </div>
 
             <PaySlipSummaryTable slips={slips} selectedId={selected?.id} onSelect={handleSelect} />

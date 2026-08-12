@@ -287,6 +287,7 @@ export function PayrollRunsPage() {
       const settings = (settingsSnap.data() ?? {}) as CompanySettings
       const payrollSettings = payrollSnap.data() ?? {}
       const companyName = settings.companyName?.trim() || DEFAULT_COMPANY_NAME
+      const showCompanyLogo = settings.showLogo ?? Boolean(settings.logoDataUrl)
 
       const year = new Date().getFullYear()
       let counter = (payrollSettings.lastPaySlipNumber as number) ?? 0
@@ -329,6 +330,8 @@ export function PayrollRunsPage() {
           companyName,
           companyAddress: settings.address ?? '',
           companyPhone: settings.phone ?? '',
+          companyLogoDataUrl: showCompanyLogo ? (settings.logoDataUrl ?? '') : '',
+          showCompanyLogo,
           lineItems: line.dayBreakdown,
           generatedAt: serverTimestamp(),
           generatedBy: user?.uid,

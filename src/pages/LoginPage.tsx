@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
+import { CompanyBranding } from '../components/CompanyBranding'
 import { AlertBanner } from '../components/AlertBanner'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { useFirebaseEmulators } from '../lib/firebase-config'
@@ -26,7 +27,7 @@ export function LoginPage() {
     logoutMessage,
     clearLogoutMessage,
   } = useAuth()
-  const { appTitle } = useCompanySettings()
+  const { appTitle, logoDataUrl, showLogo } = useCompanySettings()
   const location = useLocation()
   const unlockRequired = Boolean(location.state?.unlockRequired) || needsVaultUnlock
   const [email, setEmail] = useState('')
@@ -98,8 +99,14 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-8">
       <div className="w-full max-w-md">
         <div className="card mb-6 border border-slate-200 bg-white px-6 py-8 text-center shadow-md">
-          <Link to="/" className="text-xl font-bold text-brand-800">
-            {appTitle}
+          <Link to="/" className="inline-block">
+            <CompanyBranding
+              name={appTitle}
+              logoDataUrl={logoDataUrl}
+              showLogo={showLogo}
+              size="md"
+              nameClassName="text-brand-800"
+            />
           </Link>
           <h1 className="mt-4 text-2xl font-bold text-slate-900">Sign in</h1>
           <p className="mt-2 text-sm text-slate-600">

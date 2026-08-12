@@ -1,7 +1,8 @@
 import { useRef } from 'react'
 import type { PaySlip } from '../lib/types'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
-import { resolveCompanyField, resolveCompanyName } from '../lib/companyBranding'
+import { resolveCompanyField, resolveCompanyName, resolveLogoDataUrl, resolveShowLogo } from '../lib/companyBranding'
+import { CompanyBranding } from './CompanyBranding'
 import { formatTaxRateLabel } from '../lib/tax'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
 import { ResponsiveTable, type ResponsiveTableColumn } from './ui/ResponsiveTable'
@@ -18,6 +19,13 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
   const companyName = resolveCompanyName(paySlip.companyName, settings.companyName || appTitle)
   const companyAddress = resolveCompanyField(paySlip.companyAddress, settings.address)
   const companyPhone = resolveCompanyField(paySlip.companyPhone, settings.phone)
+  const hasLogo = Boolean(paySlip.companyLogoDataUrl?.trim() || settings.logoDataUrl?.trim())
+  const showCompanyLogo = resolveShowLogo(paySlip.showCompanyLogo, settings.showLogo, hasLogo)
+  const logoDataUrl = resolveLogoDataUrl(
+    paySlip.companyLogoDataUrl,
+    settings.logoDataUrl,
+    showCompanyLogo,
+  )
 
   const handlePrint = () => window.print()
 
@@ -77,16 +85,25 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
       )}
       <div ref={ref} className="card max-w-2xl print:border-0 print:shadow-none">
         <div className="border-b border-slate-200 pb-4 mb-4">
-          <h2 className="text-xl font-bold text-slate-900">{companyName}</h2>
-          {companyAddress && (
-            <p className="mt-1 whitespace-pre-line text-sm text-slate-600">{companyAddress}</p>
-          )}
-          {companyPhone && (
-            <p className="mt-1 text-sm text-slate-600">{companyPhone}</p>
-          )}
-          <p className="mt-2 text-sm font-semibold text-brand-700">
-            Pay Slip {paySlip.paySlipNumber}
-          </p>
+          <CompanyBranding
+            name={companyName}
+            logoDataUrl={logoDataUrl}
+            showLogo={showCompanyLogo}
+            size="lg"
+            subtitle={
+              <>
+                {companyAddress && (
+                  <p className="mt-1 whitespace-pre-line text-sm text-slate-600">{companyAddress}</p>
+                )}
+                {companyPhone && (
+                  <p className="mt-1 text-sm text-slate-600">{companyPhone}</p>
+                )}
+                <p className="mt-2 text-sm font-semibold text-brand-700">
+                  Pay Slip {paySlip.paySlipNumber}
+                </p>
+              </>
+            }
+          />
         </div>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-6">
           <div>

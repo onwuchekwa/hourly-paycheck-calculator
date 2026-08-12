@@ -1,7 +1,9 @@
 import type { MockPaycheckPreview, MockPaycheckDayLine } from '../lib/types'
+import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { isDateInPaidPeriod } from '../lib/payroll'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
 import { AlertBanner } from './AlertBanner'
+import { CompanyBranding } from './CompanyBranding'
 import { StatusBadge } from './StatusBadge'
 import { TaxBreakdownSummary } from './TaxBreakdownSummary'
 import { ResponsiveTable, type ResponsiveTableColumn } from './ui/ResponsiveTable'
@@ -11,6 +13,7 @@ interface MockPaycheckPreviewProps {
 }
 
 export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
+  const { appTitle, logoDataUrl, showLogo } = useCompanySettings()
   const missingRate = preview.dayBreakdown.some((line) => line.rate <= 0)
   const paidPeriods = preview.includedPaidPeriods ?? []
 
@@ -62,10 +65,18 @@ export function MockPaycheckPreviewCard({ preview }: MockPaycheckPreviewProps) {
   return (
     <div className="card max-w-2xl">
       <div className="mb-4 border-b border-slate-200 pb-4">
-        <h2 className="text-xl font-bold text-slate-900">Estimated Payroll</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          {formatDisplayDate(preview.payPeriodStart)} – {formatDisplayDate(preview.payPeriodEnd)}
-        </p>
+        <CompanyBranding
+          name={appTitle}
+          logoDataUrl={logoDataUrl}
+          showLogo={showLogo}
+          size="lg"
+          subtitle={
+            <p className="mt-1 text-sm text-slate-600">
+              {formatDisplayDate(preview.payPeriodStart)} – {formatDisplayDate(preview.payPeriodEnd)}
+            </p>
+          }
+        />
+        <p className="mt-3 text-sm font-medium text-slate-700">Estimated Payroll</p>
       </div>
 
       <AlertBanner variant="warning" className="mb-4">

@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom'
 import type { PayPeriod, PaySlip } from '../lib/types'
+import { useCompanySettings } from '../contexts/CompanySettingsContext'
+import { resolveCompanyName, resolveLogoDataUrl, resolveShowLogo } from '../lib/companyBranding'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
+import { CompanyBranding } from './CompanyBranding'
 import { PaySlipDocument } from './PaySlipDocument'
 
 interface OfficialPayrollPreviewProps {
@@ -10,15 +13,28 @@ interface OfficialPayrollPreviewProps {
 }
 
 export function OfficialPayrollPreview({ period, slip, sourceSlips = [] }: OfficialPayrollPreviewProps) {
+  const { settings, appTitle } = useCompanySettings()
   const individualSlips = sourceSlips.length > 0 ? sourceSlips : [slip]
+  const companyName = resolveCompanyName(slip.companyName, settings.companyName || appTitle)
+  const hasLogo = Boolean(slip.companyLogoDataUrl?.trim() || settings.logoDataUrl?.trim())
+  const showCompanyLogo = resolveShowLogo(slip.showCompanyLogo, settings.showLogo, hasLogo)
+  const logoDataUrl = resolveLogoDataUrl(slip.companyLogoDataUrl, settings.logoDataUrl, showCompanyLogo)
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="card">
-        <h2 className="text-xl font-bold text-slate-900">Official Payroll</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Pay period: {formatDisplayDate(period.startDate)} – {formatDisplayDate(period.endDate)}
-        </p>
+        <CompanyBranding
+          name={companyName}
+          logoDataUrl={logoDataUrl}
+          showLogo={showCompanyLogo}
+          size="lg"
+          subtitle={
+            <p className="mt-1 text-sm text-slate-600">
+              Pay period: {formatDisplayDate(period.startDate)} – {formatDisplayDate(period.endDate)}
+            </p>
+          }
+        />
+        <p className="mt-3 text-sm font-medium text-slate-700">Official Payroll</p>
         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <div>
             <dt className="text-slate-500">Employee</dt>

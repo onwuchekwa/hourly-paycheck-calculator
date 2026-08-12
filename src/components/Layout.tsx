@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
+import { CompanyBranding } from './CompanyBranding'
 import { MobileDrawer } from './ui/MobileDrawer'
 import { classNames } from '../lib/utils'
 import { isAdminRole } from '../lib/roles'
@@ -239,7 +240,7 @@ function MobileNavLinks({
 
 export function Layout() {
   const { profile, logout } = useAuth()
-  const { appTitle } = useCompanySettings()
+  const { appTitle, logoDataUrl, showLogo } = useCompanySettings()
   const navigate = useNavigate()
   const location = useLocation()
   const isAdmin = isAdminRole(profile?.role)
@@ -274,12 +275,20 @@ export function Layout() {
               controlsId={mobileMenuId}
             />
             <Link to={basePath} className="min-w-0 shrink">
-              <span className="block truncate text-base font-bold text-brand-950">{appTitle}</span>
-              {isAdmin && (
-                <span className="hidden text-xs font-medium uppercase tracking-wide text-slate-500 sm:block">
-                  Employer Portal
-                </span>
-              )}
+              <CompanyBranding
+                name={appTitle}
+                logoDataUrl={logoDataUrl}
+                showLogo={showLogo}
+                size="sm"
+                nameClassName="text-brand-950"
+                subtitle={
+                  isAdmin ? (
+                    <span className="hidden text-xs font-medium uppercase tracking-wide text-slate-500 sm:block">
+                      Employer Portal
+                    </span>
+                  ) : undefined
+                }
+              />
             </Link>
           </div>
 

@@ -3,6 +3,8 @@ import cors from 'cors'
 import express from 'express'
 import rateLimit from 'express-rate-limit'
 import { ApiError } from './errors.js'
+import { getFirebaseConfigStatus } from './admin.js'
+import { isSmtpConfigured } from './email.js'
 import { employeesRouter } from './routes/employees.js'
 import { emailRouter } from './routes/email.js'
 import { payrollRouter } from './routes/payroll.js'
@@ -50,7 +52,13 @@ app.use(
 )
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true })
+  const firebase = getFirebaseConfigStatus()
+  res.json({
+    ok: true,
+    smtpConfigured: isSmtpConfigured(),
+    firebaseConfigured: firebase.configured && firebase.valid,
+    firebaseJsonValid: firebase.valid,
+  })
 })
 
 app.use('/api/employees', employeesRouter)
@@ -62,8 +70,21 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
     res.status(err.status).json({ error: err.code, message: err.message })
     return
   }
+  if (err instanceof Error && err.message === 'Not allowed by CORS') {
+    res.status(403).json({
+      error: 'permission-denied',
+      message: 'This origin is not allowed by the API. Check ALLOWED_ORIGIN on Vercel.',
+    })
+    return
+  }
   console.error(err)
-  res.status(500).json({ error: 'internal', message: 'Something went wrong. Please try again.' })
+  const detail = err instanceof Error ? err.message : undefined
+  res.status(500).json({
+    error: 'internal',
+    message: detail && detail !== 'Something went wrong. Please try again.'
+      ? detail
+      : 'Something went wrong. Please try again.',
+  })
 })
 
 const port = Number(process.env.PORT ?? 3001)

@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { ApiError } from './errors.js'
 
 export interface MailMessage {
   subject: string
@@ -16,6 +17,22 @@ export function getAppSignInUrl(): string {
 
 export function isSmtpConfigured(): boolean {
   return Boolean(env('SMTP_HOST') && env('SMTP_USER') && env('SMTP_PASS'))
+}
+
+function mapSmtpError(err: unknown): ApiError {
+  const code = (err as { code?: string })?.code
+  if (code === 'EAUTH') {
+    return ApiError.failedPrecondition(
+      'Email could not be sent: SMTP authentication failed. Check SMTP_USER and SMTP_PASS on Vercel.',
+    )
+  }
+  if (code === 'ESOCKET' || code === 'ECONNECTION' || code === 'ETIMEDOUT') {
+    return ApiError.failedPrecondition(
+      `Email could not be sent: could not connect to ${env('SMTP_HOST') || 'SMTP host'}. Check SMTP_HOST and SMTP_PORT.`,
+    )
+  }
+  const detail = err instanceof Error ? err.message : 'Unknown email error'
+  return ApiError.failedPrecondition(`Email could not be sent: ${detail}`)
 }
 
 export function escapeHtml(value: string): string {
@@ -237,7 +254,9 @@ export async function sendMail(params: {
   message: MailMessage
 }): Promise<string> {
   if (!isSmtpConfigured()) {
-    throw new Error('SMTP not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS in server/.env')
+    throw ApiError.failedPrecondition(
+      'SMTP not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS on Vercel.',
+    )
   }
 
   const port = Number(env('SMTP_PORT', '587'))
@@ -251,14 +270,18 @@ export async function sendMail(params: {
     },
   })
 
-  const info = await transporter.sendMail({
-    from: env('SMTP_FROM', 'HourlyPay <noreply@hourlypay.app>'),
-    to: sanitizeHeader(params.to),
-    replyTo: params.replyTo ? sanitizeHeader(params.replyTo) : undefined,
-    subject: sanitizeHeader(params.message.subject),
-    text: params.message.text,
-    html: params.message.html,
-  })
+  try {
+    const info = await transporter.sendMail({
+      from: env('SMTP_FROM', 'HourlyPay <noreply@hourlypay.app>'),
+      to: sanitizeHeader(params.to),
+      replyTo: params.replyTo ? sanitizeHeader(params.replyTo) : undefined,
+      subject: sanitizeHeader(params.message.subject),
+      text: params.message.text,
+      html: params.message.html,
+    })
 
-  return info.messageId ?? 'unknown'
+    return info.messageId ?? 'unknown'
+  } catch (err) {
+    throw mapSmtpError(err)
+  }
 }

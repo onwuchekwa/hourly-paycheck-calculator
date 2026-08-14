@@ -23,14 +23,19 @@ const CALLABLE_MESSAGES: Record<string, string> = {
   'unauthenticated': 'Please sign in again.',
   'not-found': 'The requested item was not found.',
   'failed-precondition': 'This action cannot be completed right now.',
+  unavailable: 'Could not reach the API. Check your connection and VITE_API_URL.',
   internal: 'Something went wrong. Please try again.',
 }
 
 export function getCallableErrorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
   if (err instanceof ApiClientError) {
     const generic = CALLABLE_MESSAGES[err.code]
-    if (err.message && err.message !== generic && err.message !== 'Request failed.') {
-      return err.message
+    // Prefer the server-provided message whenever it carries more detail than the
+    // generic code mapping (e.g. SMTP auth failures come back as failed-precondition).
+    if (err.message && err.message !== 'Request failed.') {
+      if (!generic || err.message !== generic) {
+        return err.message
+      }
     }
     return generic ?? err.message ?? fallback
   }

@@ -380,10 +380,10 @@ export function PayrollRunsPage() {
           setSuccess(`Payroll finalized. ${result.count} pay slip email(s) sent. Pay period closed.`)
         } catch (err) {
           setWarning(
-            getCallableErrorMessage(
+            `Payroll was finalized, but emails could not be sent: ${getCallableErrorMessage(
               err,
-              'Payroll was finalized but pay slip emails could not be sent. Try sending them manually from Pay Slips.',
-            ),
+              'Unknown error.',
+            )}`,
           )
         }
       }

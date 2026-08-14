@@ -28,6 +28,8 @@ jobs:
 
       - name: Run offline and security tests
         run: npm run test:offline
+        env:
+          VITE_USE_FIREBASE_EMULATORS: 'true'
 
       - name: Build web app
         run: npm run build

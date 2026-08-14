@@ -45,6 +45,19 @@ import { clearPendingData } from '../lib/offline/localStore'
 
 const LOGOUT_MESSAGE_KEY = 'payroll:logoutMessage'
 
+function profilesEqual(a: UserProfile | null, b: UserProfile): boolean {
+  if (!a) return false
+  return (
+    a.uid === b.uid &&
+    a.role === b.role &&
+    a.displayName === b.displayName &&
+    a.email === b.email &&
+    a.active === b.active &&
+    a.currentHourlyRate === b.currentHourlyRate &&
+    a.mustChangePassword === b.mustChangePassword
+  )
+}
+
 interface AuthContextValue {
   user: User | null
   profile: UserProfile | null
@@ -236,7 +249,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await updateProfileVaultFromSession(user.uid, serverProfile, sourceRev)
         }
 
-        setProfile(serverProfile)
+        if (!profilesEqual(profileRef.current, serverProfile)) {
+          setProfile(serverProfile)
+        }
         setNeedsVaultUnlock(false)
         setNeedsOfflineEnrollment(shouldPromptOfflineEnrollment(serverProfile, user.uid))
         setIsOfflineSession(false)

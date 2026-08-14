@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { Timestamp } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConnectivity } from '../../contexts/ConnectivityContext'
+import { useReloadOnReconnect } from '../../hooks/useReloadOnReconnect'
 import type { TimeEntry } from '../../lib/types'
 import {
   canEditEntry,
@@ -104,7 +105,9 @@ export function TimesheetPage() {
 
   useEffect(() => {
     void loadEntry()
-  }, [loadEntry, mode])
+  }, [loadEntry])
+
+  useReloadOnReconnect(mode, loadEntry)
 
   const prevSyncingRef = useRef(syncing)
   useEffect(() => {

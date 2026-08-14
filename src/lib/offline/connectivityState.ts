@@ -63,5 +63,7 @@ export function isAuthOrPermissionError(err: unknown): boolean {
 }
 
 export function shouldFallbackToLocal(err: unknown): boolean {
-  return isNetworkError(err) || isAuthOrPermissionError(err)
+  if (!err || typeof err !== 'object') return false
+  const code = (err as { code?: string }).code
+  return isNetworkError(err) || isAuthOrPermissionError(err) || code === 'resource-exhausted'
 }

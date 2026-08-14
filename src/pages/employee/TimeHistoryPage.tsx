@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConnectivity } from '../../contexts/ConnectivityContext'
+import { useReloadOnReconnect } from '../../hooks/useReloadOnReconnect'
 import { db } from '../../lib/firebase'
 import type { TimeEntry } from '../../lib/types'
 import {
@@ -30,29 +31,35 @@ interface DeleteSessionTarget {
 export function TimeHistoryPage() {
   const { profile } = useAuth()
   const { mode } = useConnectivity()
+  const employeeId = profile?.uid ?? ''
   const [entries, setEntries] = useState<TimeEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<DeleteSessionTarget | null>(null)
   const [error, setError] = useState('')
+  const loadInFlightRef = useRef(false)
 
   const load = useCallback(async () => {
-    if (!profile) return
+    if (!employeeId || loadInFlightRef.current) return
+    loadInFlightRef.current = true
     setLoading(true)
     setError('')
     try {
-      const loaded = await repositoryFetchEmployeeHistory(profile.uid)
+      const loaded = await repositoryFetchEmployeeHistory(employeeId)
       setEntries(loaded)
     } catch {
       setError('Unable to load time history. Please try again or contact your employer.')
     } finally {
+      loadInFlightRef.current = false
       setLoading(false)
     }
-  }, [profile])
+  }, [employeeId])
 
   useEffect(() => {
     void load()
-  }, [load, mode])
+  }, [load])
+
+  useReloadOnReconnect(mode, load)
 
   const handleDeleteSession = async () => {
     if (!deleteTarget) return

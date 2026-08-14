@@ -121,10 +121,16 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsub = onIdTokenChanged(auth, (user) => {
       if (!user || getConnectivityMode() !== 'online' || !isVaultUnlocked()) return
+      if (isSyncInProgress()) return
+      const hadAuthError = lastSyncResult?.errors.some(
+        (error) =>
+          error.includes('Authentication expired') || error.includes('Sign in online to sync'),
+      )
+      if (!hadAuthError) return
       void triggerSync(user.uid)
     })
     return unsub
-  }, [triggerSync])
+  }, [triggerSync, lastSyncResult])
 
   const value = useMemo(
     () => ({

@@ -48,10 +48,6 @@ export function MockPaycheckPage() {
 
       const openPeriod = list.find((p) => p.status === 'open')
       setSelectedPeriodId(openPeriod?.id ?? list[0]?.id ?? '')
-      if (openPeriod) {
-        setStartDate(openPeriod.startDate)
-        setEndDate(openPeriod.endDate)
-      }
 
       setLoading(false)
     }

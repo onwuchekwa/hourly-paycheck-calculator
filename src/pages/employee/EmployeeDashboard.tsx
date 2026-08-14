@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useConnectivity } from '../../contexts/ConnectivityContext'
 import { db } from '../../lib/firebase'
 import type { PaySlip } from '../../lib/types'
-import { useReloadOnReconnect } from '../../hooks/useReloadOnReconnect'
+import { useReloadOnConnectivityChange } from '../../hooks/useReloadOnReconnect'
 import { repositoryFetchEmployeeEntries } from '../../lib/offline/timeEntryRepository'
 import { formatCurrency, formatDisplayDate } from '../../lib/utils'
 import { PageHeader, StatCard } from '../../components/ui'
@@ -58,7 +58,7 @@ export function EmployeeDashboard() {
     void load()
   }, [load])
 
-  useReloadOnReconnect(mode, load)
+  useReloadOnConnectivityChange(mode, load)
 
   if (loading) return <LoadingSpinner />
 

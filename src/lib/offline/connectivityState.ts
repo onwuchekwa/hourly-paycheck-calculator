@@ -1,10 +1,12 @@
 import type { ConnectivityMode } from './types'
 
 type Listener = (mode: ConnectivityMode) => void
+type FailureListener = () => void
 
 let mode: ConnectivityMode = typeof navigator !== 'undefined' && navigator.onLine ? 'online' : 'offline'
 let failureCount = 0
 const listeners = new Set<Listener>()
+const failureListeners = new Set<FailureListener>()
 
 export function getConnectivityMode(): ConnectivityMode {
   return mode
@@ -22,13 +24,19 @@ export function subscribeConnectivity(fn: Listener): () => void {
   return () => listeners.delete(fn)
 }
 
+export function subscribeConnectivityFailures(fn: FailureListener): () => void {
+  failureListeners.add(fn)
+  return () => failureListeners.delete(fn)
+}
+
 export function reportConnectivityFailure(): void {
   failureCount += 1
   if (!navigator.onLine) {
     setConnectivityMode('offline')
-  } else if (failureCount >= 2) {
+  } else {
     setConnectivityMode('degraded')
   }
+  failureListeners.forEach((fn) => fn())
 }
 
 export function reportConnectivitySuccess(): void {
@@ -52,7 +60,8 @@ export function isNetworkError(err: unknown): boolean {
     code === 'network-request-failed' ||
     message.includes('network') ||
     message.includes('Failed to fetch') ||
-    message.includes('NetworkError')
+    message.includes('NetworkError') ||
+    message.includes('timeout')
   )
 }
 
@@ -66,4 +75,10 @@ export function shouldFallbackToLocal(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
   const code = (err as { code?: string }).code
   return isNetworkError(err) || isAuthOrPermissionError(err) || code === 'resource-exhausted'
+}
+
+/** @internal Test helper */
+export function resetConnectivityStateForTests(initial: ConnectivityMode = 'online'): void {
+  mode = initial
+  failureCount = 0
 }

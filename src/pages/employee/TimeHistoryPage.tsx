@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConnectivity } from '../../contexts/ConnectivityContext'
-import { useReloadOnReconnect } from '../../hooks/useReloadOnReconnect'
+import { useReloadOnConnectivityChange } from '../../hooks/useReloadOnReconnect'
 import { db } from '../../lib/firebase'
 import type { TimeEntry } from '../../lib/types'
 import {
@@ -59,7 +59,7 @@ export function TimeHistoryPage() {
     void load()
   }, [load])
 
-  useReloadOnReconnect(mode, load)
+  useReloadOnConnectivityChange(mode, load)
 
   const handleDeleteSession = async () => {
     if (!deleteTarget) return

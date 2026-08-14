@@ -36,9 +36,25 @@ import {
   mergeSnapshotAndPending,
   setPendingEntries,
   setSnapshotEntries,
+  upsertSnapshotEntry,
 } from './localStore'
 import { verifyEntryIntegrity, withIntegrity } from './integrity'
 import type { StoredTimeEntry } from './types'
+
+const FIRESTORE_TIMEOUT_MS = 5000
+
+function withFirestoreTimeout<T>(promise: Promise<T>): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Firestore request timeout')), FIRESTORE_TIMEOUT_MS),
+    ),
+  ])
+}
+
+function reportFailureIfNetwork(err: unknown): void {
+  if (isNetworkError(err)) reportConnectivityFailure()
+}
 
 function isDraftOrSubmitted(entry: TimeEntry): boolean {
   return entry.status === 'draft' || entry.status === 'submitted'
@@ -96,7 +112,7 @@ async function firestoreFetchEmployeeEntries(employeeId: string): Promise<TimeEn
     where('employeeId', '==', employeeId),
     where('status', 'in', ['draft', 'submitted', 'rejected']),
   )
-  const snap = await getDocs(q)
+  const snap = await withFirestoreTimeout(getDocs(q))
   return snap.docs.map((d) => normalizeEntry({ id: d.id, ...d.data() } as TimeEntry))
 }
 
@@ -106,7 +122,7 @@ async function firestoreFetchEmployeeHistory(employeeId: string): Promise<TimeEn
     where('employeeId', '==', employeeId),
     orderBy('workDate', 'desc'),
   )
-  const snap = await getDocs(q)
+  const snap = await withFirestoreTimeout(getDocs(q))
   return snap.docs.map((d) => normalizeEntry({ id: d.id, ...d.data() } as TimeEntry))
 }
 
@@ -151,7 +167,7 @@ export async function repositoryGetEntry(
   const docId = timeEntryDocId(employeeId, workDate)
   if (getConnectivityMode() === 'online') {
     try {
-      const snap = await getDoc(doc(db, 'timeEntries', docId))
+      const snap = await withFirestoreTimeout(getDoc(doc(db, 'timeEntries', docId)))
       const serverEntries = snap.exists()
         ? [normalizeEntry({ id: snap.id, ...snap.data() } as TimeEntry)]
         : []
@@ -159,7 +175,7 @@ export async function repositoryGetEntry(
       return overlaid.find((e) => e.id === docId) ?? null
     } catch (err) {
       if (shouldFallbackToLocal(err)) {
-        if (isNetworkError(err)) reportConnectivityFailure()
+        reportFailureIfNetwork(err)
       } else {
         throw err
       }
@@ -177,7 +193,7 @@ export async function repositoryFetchEmployeeEntries(employeeId: string): Promis
       return applyPendingOverlay(employeeId, entries)
     } catch (err) {
       if (shouldFallbackToLocal(err)) {
-        if (isNetworkError(err)) reportConnectivityFailure()
+        reportFailureIfNetwork(err)
       } else {
         throw err
       }
@@ -194,7 +210,7 @@ export async function repositoryFetchEmployeeHistory(employeeId: string): Promis
       return overlaid.sort((a, b) => b.workDate.localeCompare(a.workDate))
     } catch (err) {
       if (shouldFallbackToLocal(err)) {
-        if (isNetworkError(err)) reportConnectivityFailure()
+        reportFailureIfNetwork(err)
       } else {
         throw err
       }
@@ -236,7 +252,7 @@ export async function repositoryEnsureEntry(
         punches: [],
         updatedAt: serverTimestamp(),
       })
-      await refreshSnapshot(employeeId)
+      await upsertSnapshotEntry(employeeId, newEntry)
       return newEntry
     } catch (err) {
       if (!isNetworkError(err)) throw err
@@ -270,7 +286,7 @@ export async function repositoryUpdateEntry(
   if (getConnectivityMode() === 'online') {
     try {
       await updateDoc(doc(db, 'timeEntries', entryId), firestorePatch)
-      await refreshSnapshot(employeeId)
+      await upsertSnapshotEntry(employeeId, updated)
       return
     } catch (err) {
       if (!isNetworkError(err)) throw err

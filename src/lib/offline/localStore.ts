@@ -6,6 +6,7 @@ import {
   isVaultUnlocked,
 } from './encryptedVault'
 import { storedEntryFromJson, storedEntryToJson, timeEntryFromJson, timeEntryToJson } from './serialization'
+import { withIntegrity } from './integrity'
 import type { StoredTimeEntry } from './types'
 import type { TimeEntry } from '../types'
 
@@ -60,6 +61,24 @@ export async function setSnapshotEntries(employeeId: string, entries: StoredTime
     SNAPSHOT_PREFIX + employeeId,
     entries.map((e) => timeEntryToJson(e)),
   )
+}
+
+export async function upsertSnapshotEntry(employeeId: string, entry: TimeEntry): Promise<void> {
+  if (!isLocalStoreAccessible(employeeId)) return
+  const existing = await getSnapshotEntries(employeeId)
+  const map = new Map(existing.map((e) => [e.id, e]))
+  map.set(entry.id, entry)
+  const stored = await Promise.all(
+    [...map.values()].map((e) =>
+      withIntegrity({
+        ...e,
+        syncStatus: 'pending',
+        localUpdatedAt: new Date().toISOString(),
+        localRevision: 0,
+      }),
+    ),
+  )
+  await setSnapshotEntries(employeeId, stored)
 }
 
 export function hasPendingData(employeeId: string): boolean {

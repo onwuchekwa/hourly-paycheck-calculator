@@ -7,7 +7,7 @@ import { clearSessionKey, deriveKey, setSessionKey } from '../src/lib/offline/en
 import { findGlobalOpenPunch } from '../src/lib/timeEntries'
 import { applyPendingOverlay } from '../src/lib/offline/timeEntryRepository'
 import { withIntegrity } from '../src/lib/offline/integrity'
-import { setPendingEntries } from '../src/lib/offline/localStore'
+import { setPendingEntries, getSnapshotEntries, upsertSnapshotEntry } from '../src/lib/offline/localStore'
 import type { TimeEntry } from '../src/lib/types'
 import type { StoredTimeEntry } from '../src/lib/offline/types'
 
@@ -134,5 +134,50 @@ describe('applyPendingOverlay', () => {
     const serverEntry = baseEntry()
     const result = await applyPendingOverlay(EMPLOYEE_ID, [serverEntry])
     expect(result).toEqual([serverEntry])
+  })
+})
+
+describe('upsertSnapshotEntry', () => {
+  beforeEach(() => {
+    clearSessionKey()
+    sessionStorage.clear()
+    localStorage.clear()
+  })
+
+  it('merges entry into snapshot by ID', async () => {
+    await setupVault()
+    const first = baseEntry({ workDate: '2026-08-12', id: `${EMPLOYEE_ID}_2026-08-12` })
+    const second = baseEntry({
+      punches: [
+        {
+          clockIn: Timestamp.fromDate(new Date('2026-08-13T17:42:00')),
+          clockOut: null,
+        },
+      ],
+    })
+    await upsertSnapshotEntry(EMPLOYEE_ID, first)
+    await upsertSnapshotEntry(EMPLOYEE_ID, second)
+
+    const snapshot = await getSnapshotEntries(EMPLOYEE_ID)
+    expect(snapshot).toHaveLength(2)
+    const updated = snapshot.find((entry) => entry.id === second.id)
+    expect(updated?.punches?.[0].clockOut).toBeNull()
+  })
+
+  it('makes open punch discoverable from snapshot alone', async () => {
+    await setupVault()
+    const entry = baseEntry({
+      punches: [
+        {
+          clockIn: Timestamp.fromDate(new Date('2026-08-13T17:42:00')),
+          clockOut: null,
+        },
+      ],
+    })
+    await upsertSnapshotEntry(EMPLOYEE_ID, entry)
+
+    const snapshot = await getSnapshotEntries(EMPLOYEE_ID)
+    const open = findGlobalOpenPunch(snapshot)
+    expect(open?.entryId).toBe(entry.id)
   })
 })

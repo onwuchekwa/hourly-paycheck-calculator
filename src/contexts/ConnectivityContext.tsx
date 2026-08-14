@@ -17,6 +17,7 @@ import {
   reportConnectivitySuccess,
   setConnectivityMode,
   subscribeConnectivity,
+  subscribeConnectivityFailures,
 } from '../lib/offline/connectivityState'
 import { flushSync, isSyncInProgress, type SyncResult } from '../lib/offline/syncManager'
 import { isVaultUnlocked } from '../lib/offline/encryptedVault'
@@ -34,22 +35,19 @@ interface ConnectivityContextValue {
 
 const ConnectivityContext = createContext<ConnectivityContextValue | null>(null)
 
-const HEARTBEAT_MS = 30_000
+const HEARTBEAT_MS = 10_000
 const ONLINE_DEBOUNCE_MS = 2_000
+const FAILURE_PROBE_DEBOUNCE_MS = 1_000
+const PROBE_TIMEOUT_MS = 5_000
 
 async function probeConnectivity(): Promise<boolean> {
   if (!navigator.onLine) return false
   try {
-    if (auth.currentUser) {
-      await Promise.race([
-        auth.currentUser.getIdToken(false),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-      ])
-      return true
-    }
     await Promise.race([
       getDoc(doc(db, 'settings', 'company')),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Connectivity probe timeout')), PROBE_TIMEOUT_MS),
+      ),
     ])
     return true
   } catch {
@@ -62,6 +60,7 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
   const [syncing, setSyncing] = useState(false)
   const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null)
   const onlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const failureProbeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     return subscribeConnectivity(setMode)
@@ -78,6 +77,11 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    const scheduleFailureProbe = () => {
+      if (failureProbeTimerRef.current) clearTimeout(failureProbeTimerRef.current)
+      failureProbeTimerRef.current = setTimeout(() => void runProbe(), FAILURE_PROBE_DEBOUNCE_MS)
+    }
+
     const onOnline = () => {
       if (onlineTimerRef.current) clearTimeout(onlineTimerRef.current)
       onlineTimerRef.current = setTimeout(() => void runProbe(), ONLINE_DEBOUNCE_MS)
@@ -86,14 +90,17 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)
+    const unsubFailures = subscribeConnectivityFailures(scheduleFailureProbe)
     void runProbe()
 
     const interval = setInterval(() => void runProbe(), HEARTBEAT_MS)
     return () => {
       window.removeEventListener('online', onOnline)
       window.removeEventListener('offline', onOffline)
+      unsubFailures()
       clearInterval(interval)
       if (onlineTimerRef.current) clearTimeout(onlineTimerRef.current)
+      if (failureProbeTimerRef.current) clearTimeout(failureProbeTimerRef.current)
     }
   }, [runProbe])
 

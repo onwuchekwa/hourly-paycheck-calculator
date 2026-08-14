@@ -3,12 +3,13 @@ import type { ConnectivityMode } from './types'
 type Listener = (mode: ConnectivityMode) => void
 type FailureListener = () => void
 
-const ONLINE_SUCCESS_THRESHOLD = 2
+const ONLINE_RECOVERY_THRESHOLD = 2
 
 let mode: ConnectivityMode =
   typeof navigator !== 'undefined' && navigator.onLine ? 'degraded' : 'offline'
 let failureCount = 0
 let successStreak = 0
+let everOnline = false
 let suppressFailureReports = false
 const listeners = new Set<Listener>()
 const failureListeners = new Set<FailureListener>()
@@ -17,10 +18,23 @@ export function getConnectivityMode(): ConnectivityMode {
   return mode
 }
 
+/** True after the app has been online and is now offline/degraded again. */
+export function hasConfirmedConnectivityIssue(): boolean {
+  return mode !== 'online' && everOnline
+}
+
+/** True during initial startup before first successful online confirmation. */
+export function isStartupConnectivityPhase(): boolean {
+  return !everOnline && mode !== 'online'
+}
+
 export function setConnectivityMode(next: ConnectivityMode): void {
   if (mode === next) return
   mode = next
-  if (next === 'online') failureCount = 0
+  if (next === 'online') {
+    failureCount = 0
+    everOnline = true
+  }
   listeners.forEach((fn) => fn(next))
 }
 
@@ -58,7 +72,8 @@ export function reportConnectivitySuccess(): void {
     failureCount = 0
     return
   }
-  if (successStreak >= ONLINE_SUCCESS_THRESHOLD) {
+  const threshold = everOnline ? ONLINE_RECOVERY_THRESHOLD : 1
+  if (successStreak >= threshold) {
     failureCount = 0
     setConnectivityMode('online')
   }
@@ -102,5 +117,6 @@ export function resetConnectivityStateForTests(initial?: ConnectivityMode): void
     (typeof navigator !== 'undefined' && navigator.onLine ? 'degraded' : 'offline')
   failureCount = 0
   successStreak = 0
+  everOnline = initial === 'online'
   suppressFailureReports = false
 }

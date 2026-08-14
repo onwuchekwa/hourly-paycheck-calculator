@@ -4,6 +4,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getConnectivityMode,
+  hasConfirmedConnectivityIssue,
+  isStartupConnectivityPhase,
   reportConnectivityFailure,
   reportConnectivitySuccess,
   resetConnectivityStateForTests,
@@ -24,6 +26,8 @@ describe('connectivityState', () => {
     vi.stubGlobal('navigator', { onLine: true })
     resetConnectivityStateForTests()
     expect(getConnectivityMode()).toBe('degraded')
+    expect(isStartupConnectivityPhase()).toBe(true)
+    expect(hasConfirmedConnectivityIssue()).toBe(false)
   })
 
   it('sets degraded on first failure while navigator.onLine is true', () => {
@@ -38,23 +42,27 @@ describe('connectivityState', () => {
     expect(getConnectivityMode()).toBe('offline')
   })
 
-  it('does not promote to online after a single success while degraded', () => {
+  it('promotes to online after a single success during startup', () => {
     vi.stubGlobal('navigator', { onLine: true })
-    reportConnectivityFailure()
-    reportConnectivitySuccess()
-    expect(getConnectivityMode()).toBe('degraded')
-  })
-
-  it('promotes to online after two consecutive successes while degraded', () => {
-    vi.stubGlobal('navigator', { onLine: true })
-    reportConnectivityFailure()
-    reportConnectivitySuccess()
+    resetConnectivityStateForTests('degraded')
     reportConnectivitySuccess()
     expect(getConnectivityMode()).toBe('online')
   })
 
-  it('resets success streak on failure', () => {
+  it('requires two successes to recover after a confirmed outage', () => {
     vi.stubGlobal('navigator', { onLine: true })
+    resetConnectivityStateForTests('online')
+    reportConnectivityFailure()
+    expect(hasConfirmedConnectivityIssue()).toBe(true)
+    reportConnectivitySuccess()
+    expect(getConnectivityMode()).toBe('degraded')
+    reportConnectivitySuccess()
+    expect(getConnectivityMode()).toBe('online')
+  })
+
+  it('resets success streak on failure during recovery', () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    resetConnectivityStateForTests('online')
     reportConnectivityFailure()
     reportConnectivitySuccess()
     reportConnectivityFailure()

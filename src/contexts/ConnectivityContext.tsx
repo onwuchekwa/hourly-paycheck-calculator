@@ -13,6 +13,7 @@ import { onIdTokenChanged } from 'firebase/auth'
 import { auth, db } from '../lib/firebase'
 import {
   getConnectivityMode,
+  isStartupConnectivityPhase,
   reportConnectivityFailure,
   reportConnectivitySuccess,
   setConnectivityMode,
@@ -39,6 +40,7 @@ const ConnectivityContext = createContext<ConnectivityContextValue | null>(null)
 
 const HEARTBEAT_MS = 10_000
 const OFFLINE_HEARTBEAT_MS = 30_000
+const STARTUP_HEARTBEAT_MS = 3_000
 const ONLINE_DEBOUNCE_MS = 2_000
 const FAILURE_PROBE_DEBOUNCE_MS = 1_000
 const PROBE_TIMEOUT_MS = 5_000
@@ -121,7 +123,12 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
   }, [runProbe])
 
   useEffect(() => {
-    const heartbeatMs = mode === 'online' ? HEARTBEAT_MS : OFFLINE_HEARTBEAT_MS
+    const heartbeatMs =
+      mode === 'online'
+        ? HEARTBEAT_MS
+        : isStartupConnectivityPhase()
+          ? STARTUP_HEARTBEAT_MS
+          : OFFLINE_HEARTBEAT_MS
     const interval = setInterval(() => void runProbe(), heartbeatMs)
     return () => clearInterval(interval)
   }, [mode, runProbe])

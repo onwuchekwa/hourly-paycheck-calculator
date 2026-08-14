@@ -1,6 +1,7 @@
 import { useConnectivity } from '../contexts/ConnectivityContext'
 import { AlertBanner } from './AlertBanner'
 import { hasPendingData } from '../lib/offline/localStore'
+import { hasConfirmedConnectivityIssue } from '../lib/offline/connectivityState'
 import { useAuth } from '../contexts/AuthContext'
 
 export function OfflineBanner() {
@@ -10,6 +11,7 @@ export function OfflineBanner() {
   if (!ready) return null
 
   if (mode === 'degraded') {
+    if (!hasConfirmedConnectivityIssue()) return null
     return (
       <AlertBanner variant="warning" className="mb-4">
         Connection unstable — working offline. Changes will sync when connection is restored.

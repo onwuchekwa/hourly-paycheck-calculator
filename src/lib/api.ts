@@ -18,14 +18,26 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   }
 
   const token = await user.getIdToken()
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  })
+
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    const message =
+      err instanceof TypeError && err.message.includes('Failed to fetch')
+        ? 'Could not reach the email API. Check your connection and that VITE_API_URL is configured.'
+        : err instanceof Error
+          ? err.message
+          : 'Network request failed.'
+    throw new ApiClientError('unavailable', message)
+  }
 
   const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string }
 

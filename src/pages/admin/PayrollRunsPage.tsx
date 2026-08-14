@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTaxSettings } from '../../contexts/TaxSettingsContext'
-import { apiPost } from '../../lib/api'
+import { apiPost, isApiConfigured } from '../../lib/api'
 import { db } from '../../lib/firebase'
 import type {
   CompanySettings,
@@ -69,6 +69,7 @@ export function PayrollRunsPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [warning, setWarning] = useState('')
   const [finalizeTarget, setFinalizeTarget] = useState<PayrollRun | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<PayrollRun | null>(null)
   const [rollbackTarget, setRollbackTarget] = useState<PayrollRun | null>(null)
@@ -158,6 +159,7 @@ export function PayrollRunsPage() {
 
     setBusy(true)
     setError('')
+    setWarning('')
     try {
       const period = periods.find((p) => p.id === selectedPeriodId)
       if (!period) return
@@ -277,7 +279,15 @@ export function PayrollRunsPage() {
     setBusy(true)
     setError('')
     setSuccess('')
+    setWarning('')
     try {
+      if (emailOnFinalize && !isApiConfigured()) {
+        setError(
+          'Email API is not configured. Uncheck "Email pay slips" to finalize without sending, or set VITE_API_URL.',
+        )
+        return
+      }
+
       const settingsRef = doc(db, 'settings', 'company')
       const payrollSettingsRef = doc(db, 'settings', 'payroll')
       const [settingsSnap, payrollSnap] = await Promise.all([
@@ -360,13 +370,22 @@ export function PayrollRunsPage() {
 
       await batch.commit()
 
+      setSuccess('Payroll finalized, pay slips generated, and pay period closed.')
+
       if (emailOnFinalize) {
-        const result = await apiPost<{ success: boolean; count: number }>('/api/email/payslip-batch', {
-          payrollRunId: run.id,
-        })
-        setSuccess(`Payroll finalized. ${result.count} pay slip email(s) sent. Pay period closed.`)
-      } else {
-        setSuccess('Payroll finalized, pay slips generated, and pay period closed.')
+        try {
+          const result = await apiPost<{ success: boolean; count: number }>('/api/email/payslip-batch', {
+            payrollRunId: run.id,
+          })
+          setSuccess(`Payroll finalized. ${result.count} pay slip email(s) sent. Pay period closed.`)
+        } catch (err) {
+          setWarning(
+            getCallableErrorMessage(
+              err,
+              'Payroll was finalized but pay slip emails could not be sent. Try sending them manually from Pay Slips.',
+            ),
+          )
+        }
       }
 
       setFinalizeTarget(null)
@@ -629,6 +648,7 @@ export function PayrollRunsPage() {
           Generate Preview
         </button>
         {error && <AlertBanner variant="error">{error}</AlertBanner>}
+        {warning && <AlertBanner variant="warning">{warning}</AlertBanner>}
         {success && <AlertBanner variant="success">{success}</AlertBanner>}
       </div>
 

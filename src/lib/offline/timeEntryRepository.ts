@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -27,6 +28,7 @@ import {
   getConnectivityMode,
   isNetworkError,
   reportConnectivityFailure,
+  shouldFallbackToLocal,
 } from './connectivityState'
 import {
   getPendingEntries,
@@ -51,6 +53,20 @@ async function toStored(entry: TimeEntry, revision = 1): Promise<StoredTimeEntry
   })
 }
 
+export async function applyPendingOverlay(
+  employeeId: string,
+  serverEntries: TimeEntry[],
+): Promise<TimeEntry[]> {
+  if (!isLocalStoreAccessible(employeeId)) return serverEntries
+  const pending = await getPendingEntries(employeeId)
+  const map = new Map(serverEntries.map((entry) => [entry.id, normalizeEntry(entry)]))
+  for (const entry of pending) {
+    if (entry.integrity && !(await verifyEntryIntegrity(entry))) continue
+    map.set(entry.id, normalizeEntry(entry))
+  }
+  return [...map.values()]
+}
+
 async function readMergedEntries(employeeId: string): Promise<TimeEntry[]> {
   const merged = await mergeSnapshotAndPending(employeeId)
   const valid: TimeEntry[] = []
@@ -64,11 +80,31 @@ async function readMergedEntries(employeeId: string): Promise<TimeEntry[]> {
   return valid
 }
 
+async function readMergedHistoryEntries(employeeId: string): Promise<TimeEntry[]> {
+  const merged = await mergeSnapshotAndPending(employeeId)
+  const valid: TimeEntry[] = []
+  for (const entry of merged) {
+    if (entry.integrity && !(await verifyEntryIntegrity(entry))) continue
+    valid.push(normalizeEntry(entry))
+  }
+  return valid.sort((a, b) => b.workDate.localeCompare(a.workDate))
+}
+
 async function firestoreFetchEmployeeEntries(employeeId: string): Promise<TimeEntry[]> {
   const q = query(
     collection(db, 'timeEntries'),
     where('employeeId', '==', employeeId),
     where('status', 'in', ['draft', 'submitted']),
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => normalizeEntry({ id: d.id, ...d.data() } as TimeEntry))
+}
+
+async function firestoreFetchEmployeeHistory(employeeId: string): Promise<TimeEntry[]> {
+  const q = query(
+    collection(db, 'timeEntries'),
+    where('employeeId', '==', employeeId),
+    orderBy('workDate', 'desc'),
   )
   const snap = await getDocs(q)
   return snap.docs.map((d) => normalizeEntry({ id: d.id, ...d.data() } as TimeEntry))
@@ -116,11 +152,17 @@ export async function repositoryGetEntry(
   if (getConnectivityMode() === 'online') {
     try {
       const snap = await getDoc(doc(db, 'timeEntries', docId))
-      if (!snap.exists()) return null
-      return normalizeEntry({ id: snap.id, ...snap.data() } as TimeEntry)
+      const serverEntries = snap.exists()
+        ? [normalizeEntry({ id: snap.id, ...snap.data() } as TimeEntry)]
+        : []
+      const overlaid = await applyPendingOverlay(employeeId, serverEntries)
+      return overlaid.find((e) => e.id === docId) ?? null
     } catch (err) {
-      if (isNetworkError(err)) reportConnectivityFailure()
-      else throw err
+      if (shouldFallbackToLocal(err)) {
+        if (isNetworkError(err)) reportConnectivityFailure()
+      } else {
+        throw err
+      }
     }
   }
   const merged = await readMergedEntries(employeeId)
@@ -132,13 +174,33 @@ export async function repositoryFetchEmployeeEntries(employeeId: string): Promis
     try {
       const entries = await firestoreFetchEmployeeEntries(employeeId)
       await refreshSnapshot(employeeId)
-      return entries
+      return applyPendingOverlay(employeeId, entries)
     } catch (err) {
-      if (isNetworkError(err)) reportConnectivityFailure()
-      else throw err
+      if (shouldFallbackToLocal(err)) {
+        if (isNetworkError(err)) reportConnectivityFailure()
+      } else {
+        throw err
+      }
     }
   }
   return readMergedEntries(employeeId)
+}
+
+export async function repositoryFetchEmployeeHistory(employeeId: string): Promise<TimeEntry[]> {
+  if (getConnectivityMode() === 'online') {
+    try {
+      const entries = await firestoreFetchEmployeeHistory(employeeId)
+      const overlaid = await applyPendingOverlay(employeeId, entries)
+      return overlaid.sort((a, b) => b.workDate.localeCompare(a.workDate))
+    } catch (err) {
+      if (shouldFallbackToLocal(err)) {
+        if (isNetworkError(err)) reportConnectivityFailure()
+      } else {
+        throw err
+      }
+    }
+  }
+  return readMergedHistoryEntries(employeeId)
 }
 
 export async function repositoryFindGlobalOpenPunch(employeeId: string): Promise<OpenPunchLocation | null> {

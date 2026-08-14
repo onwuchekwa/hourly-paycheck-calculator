@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, deleteDoc, doc, getDocs, query, updateDoc, where, orderBy, serverTimestamp } from 'firebase/firestore'
+import { deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
+import { useConnectivity } from '../../contexts/ConnectivityContext'
 import { db } from '../../lib/firebase'
 import type { TimeEntry } from '../../lib/types'
 import {
@@ -9,10 +10,10 @@ import {
   formatEntryDuration,
   formatPunchDuration,
   getPunches,
-  normalizeEntry,
   punchesToFirestore,
   removePunchAtIndex,
 } from '../../lib/timeEntries'
+import { repositoryFetchEmployeeHistory } from '../../lib/offline/timeEntryRepository'
 import { formatDisplayDate, formatTime } from '../../lib/utils'
 import { EmptyState, PageHeader } from '../../components/ui'
 import { AlertBanner } from '../../components/AlertBanner'
@@ -28,30 +29,30 @@ interface DeleteSessionTarget {
 
 export function TimeHistoryPage() {
   const { profile } = useAuth()
+  const { mode } = useConnectivity()
   const [entries, setEntries] = useState<TimeEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<DeleteSessionTarget | null>(null)
   const [error, setError] = useState('')
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!profile) return
     setLoading(true)
-    const q = query(
-      collection(db, 'timeEntries'),
-      where('employeeId', '==', profile.uid),
-      orderBy('workDate', 'desc'),
-    )
-    const snap = await getDocs(q)
-    setEntries(
-      snap.docs.map((d) => normalizeEntry({ id: d.id, ...d.data() } as TimeEntry)),
-    )
-    setLoading(false)
-  }
+    setError('')
+    try {
+      const loaded = await repositoryFetchEmployeeHistory(profile.uid)
+      setEntries(loaded)
+    } catch {
+      setError('Unable to load time history. Please try again or contact your employer.')
+    } finally {
+      setLoading(false)
+    }
+  }, [profile])
 
   useEffect(() => {
     void load()
-  }, [profile])
+  }, [load, mode])
 
   const handleDeleteSession = async () => {
     if (!deleteTarget) return

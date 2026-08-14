@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Timestamp } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
@@ -48,7 +48,7 @@ import { AlertBanner } from '../../components/AlertBanner'
 
 export function TimesheetPage() {
   const { profile } = useAuth()
-  const { mode } = useConnectivity()
+  const { mode, syncing, lastSyncResult } = useConnectivity()
   const location = useLocation()
   const [workDate, setWorkDate] = useState(formatDate(new Date()))
   const [entry, setEntry] = useState<TimeEntry | null>(null)
@@ -69,8 +69,9 @@ export function TimesheetPage() {
   const readOnly = entry ? !canEditEntry(entry) : false
   const hasGlobalOpen = globalOpenEntryId !== null
   const openOnThisDay = normalizedEntry ? getOpenPunch(normalizedEntry) !== null : false
-  const showClockIn = !readOnly && !hasGlobalOpen
-  const showClockOut = !readOnly && hasGlobalOpen
+  const hasOpenPunch = hasGlobalOpen || openOnThisDay
+  const showClockIn = !readOnly && !hasOpenPunch
+  const showClockOut = !readOnly && hasOpenPunch
 
   const refreshGlobalOpen = useCallback(async () => {
     if (!employeeId) return
@@ -104,6 +105,15 @@ export function TimesheetPage() {
   useEffect(() => {
     void loadEntry()
   }, [loadEntry, mode])
+
+  const prevSyncingRef = useRef(syncing)
+  useEffect(() => {
+    const wasSyncing = prevSyncingRef.current
+    prevSyncingRef.current = syncing
+    if (wasSyncing && !syncing && lastSyncResult && lastSyncResult.synced > 0) {
+      void loadEntry()
+    }
+  }, [syncing, lastSyncResult, loadEntry])
 
   const ensureEntry = async (): Promise<TimeEntry> => {
     return repositoryEnsureEntry(employeeId, profile?.displayName ?? '', workDate)

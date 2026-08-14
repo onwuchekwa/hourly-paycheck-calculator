@@ -36,9 +36,13 @@ export function OfflineBanner() {
   }
 
   if (lastSyncResult?.errors.length) {
+    const message = lastSyncResult.errors[0]
+    const needsReauth =
+      message.includes('Authentication expired') || message.includes('Sign in online to sync')
     return (
       <AlertBanner variant="error" className="mb-4">
-        Sync issue: {lastSyncResult.errors[0]}
+        Sync issue: {message}
+        {needsReauth && ' — sign out and sign back in to sync your offline changes.'}
       </AlertBanner>
     )
   }

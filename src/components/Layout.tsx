@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useConnectivity } from '../contexts/ConnectivityContext'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { CompanyBranding } from './CompanyBranding'
 import { MobileDrawer } from './ui/MobileDrawer'
@@ -240,17 +241,26 @@ function MobileNavLinks({
 
 export function Layout() {
   const { profile, logout } = useAuth()
+  const { mode } = useConnectivity()
   const { appTitle, logoDataUrl, showLogo } = useCompanySettings()
   const navigate = useNavigate()
   const location = useLocation()
   const isAdmin = isAdminRole(profile?.role)
   const basePath = isAdmin ? '/admin' : '/employee'
+  const onTimesheet = location.pathname === '/employee/timesheet'
   const [mobileOpen, setMobileOpen] = useState(false)
   const mobileMenuId = 'mobile-main-nav'
 
   useEffect(() => {
     setMobileOpen(false)
   }, [location.pathname])
+
+  useEffect(() => {
+    if (isAdmin) return
+    if (mode !== 'offline' && mode !== 'degraded') return
+    if (onTimesheet) return
+    navigate('/employee/timesheet', { replace: true })
+  }, [isAdmin, mode, onTimesheet, navigate])
 
   const handleLogout = async () => {
     setMobileOpen(false)

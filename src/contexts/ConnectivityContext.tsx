@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { doc, getDoc } from 'firebase/firestore'
+import { onIdTokenChanged } from 'firebase/auth'
 import { auth, db } from '../lib/firebase'
 import {
   getConnectivityMode,
@@ -116,6 +117,14 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
     if (!employeeId || !isVaultUnlocked()) return
     void triggerSync(employeeId)
   }, [mode, triggerSync])
+
+  useEffect(() => {
+    const unsub = onIdTokenChanged(auth, (user) => {
+      if (!user || getConnectivityMode() !== 'online' || !isVaultUnlocked()) return
+      void triggerSync(user.uid)
+    })
+    return unsub
+  }, [triggerSync])
 
   const value = useMemo(
     () => ({

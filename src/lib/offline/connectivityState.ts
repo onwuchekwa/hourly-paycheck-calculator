@@ -55,3 +55,13 @@ export function isNetworkError(err: unknown): boolean {
     message.includes('NetworkError')
   )
 }
+
+export function isAuthOrPermissionError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const code = (err as { code?: string }).code
+  return code === 'permission-denied' || code === 'unauthenticated'
+}
+
+export function shouldFallbackToLocal(err: unknown): boolean {
+  return isNetworkError(err) || isAuthOrPermissionError(err)
+}

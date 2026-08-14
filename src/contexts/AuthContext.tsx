@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -73,6 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [logoutMessage, setLogoutMessage] = useState<string | null>(() =>
     sessionStorage.getItem(LOGOUT_MESSAGE_KEY),
   )
+  const profileRef = useRef(profile)
+  profileRef.current = profile
 
   const clearLogoutMessage = useCallback(() => {
     sessionStorage.removeItem(LOGOUT_MESSAGE_KEY)
@@ -205,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        if (profile && isEmployeeRole(profile.role) && !isEmployeeRole(serverProfile.role)) {
+        if (profileRef.current && isEmployeeRole(profileRef.current.role) && !isEmployeeRole(serverProfile.role)) {
           await logout('Your account role has changed. Sign in again.')
           return
         }
@@ -246,7 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener('online', onOnline)
     void revalidate()
     return () => window.removeEventListener('online', onOnline)
-  }, [user, profile, logout])
+  }, [user, logout])
 
   const enrollOfflineAccess = useCallback(
     async (password: string) => {

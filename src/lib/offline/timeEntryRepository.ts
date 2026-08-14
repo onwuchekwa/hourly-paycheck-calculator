@@ -94,7 +94,7 @@ async function firestoreFetchEmployeeEntries(employeeId: string): Promise<TimeEn
   const q = query(
     collection(db, 'timeEntries'),
     where('employeeId', '==', employeeId),
-    where('status', 'in', ['draft', 'submitted']),
+    where('status', 'in', ['draft', 'submitted', 'rejected']),
   )
   const snap = await getDocs(q)
   return snap.docs.map((d) => normalizeEntry({ id: d.id, ...d.data() } as TimeEntry))

@@ -1,41 +1,39 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { collection, getCountFromServer, getDocs, query, where } from 'firebase/firestore'
+import { collection, getDocs, query, where } from 'firebase/firestore'
 import { useAuth } from '../../contexts/AuthContext'
+import { useConnectivity } from '../../contexts/ConnectivityContext'
 import { db } from '../../lib/firebase'
 import type { PaySlip } from '../../lib/types'
-import { autoCloseStalePunches } from '../../lib/timeEntries'
+import { repositoryFetchEmployeeEntries } from '../../lib/offline/timeEntryRepository'
 import { formatCurrency, formatDisplayDate } from '../../lib/utils'
 import { PageHeader, StatCard } from '../../components/ui'
 import { LoadingSpinner } from '../../components/LoadingSpinner'
 
+const PENDING_STATUSES = new Set(['draft', 'submitted', 'rejected'])
+
 export function EmployeeDashboard() {
   const { profile } = useAuth()
+  const { mode } = useConnectivity()
+  const employeeId = profile?.uid ?? ''
   const [ytdGross, setYtdGross] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
   const [recentSlips, setRecentSlips] = useState<PaySlip[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (!profile) return
-    const load = async () => {
+  const load = useCallback(async () => {
+    if (!employeeId) return
+    setLoading(true)
+    try {
       const year = new Date().getFullYear().toString()
       const slipsQ = query(
         collection(db, 'paySlips'),
-        where('employeeId', '==', profile.uid),
-      )
-      const entriesQ = query(
-        collection(db, 'timeEntries'),
-        where('employeeId', '==', profile.uid),
-        where('status', 'in', ['draft', 'submitted', 'rejected']),
+        where('employeeId', '==', employeeId),
       )
 
-      // Stale-punch cleanup only touches punch times (not entry statuses), so
-      // it can safely run alongside the dashboard reads.
-      const [slipsSnap, entriesCount] = await Promise.all([
+      const [slipsSnap, entries] = await Promise.all([
         getDocs(slipsQ),
-        getCountFromServer(entriesQ),
-        autoCloseStalePunches(profile.uid),
+        repositoryFetchEmployeeEntries(employeeId),
       ])
 
       const slips = slipsSnap.docs
@@ -45,11 +43,19 @@ export function EmployeeDashboard() {
 
       setYtdGross(slips.reduce((sum, s) => sum + s.grossPay, 0))
       setRecentSlips(slips.slice(0, 3))
-      setPendingCount(entriesCount.data().count)
+      setPendingCount(entries.filter((entry) => PENDING_STATUSES.has(entry.status)).length)
+    } catch {
+      setYtdGross(0)
+      setRecentSlips([])
+      setPendingCount(0)
+    } finally {
       setLoading(false)
     }
+  }, [employeeId])
+
+  useEffect(() => {
     void load()
-  }, [profile])
+  }, [load, mode])
 
   if (loading) return <LoadingSpinner />
 

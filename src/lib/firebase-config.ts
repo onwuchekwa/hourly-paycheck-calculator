@@ -21,7 +21,7 @@ function isPlaceholder(value: string | undefined): boolean {
   return value.includes('your-') || value === '123456789' || value === 'abcdef'
 }
 
-export function useFirebaseEmulators(): boolean {
+export function firebaseEmulatorsEnabled(): boolean {
   return import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true'
 }
 
@@ -35,7 +35,7 @@ export function resolveFirebaseConfig(): FirebaseClientConfig {
     appId: import.meta.env.VITE_FIREBASE_APP_ID ?? '',
   }
 
-  if (useFirebaseEmulators()) {
+  if (firebaseEmulatorsEnabled()) {
     return {
       apiKey: isPlaceholder(fromEnv.apiKey) ? DEMO_FIREBASE_CONFIG.apiKey : fromEnv.apiKey,
       authDomain: isPlaceholder(fromEnv.authDomain) ? DEMO_FIREBASE_CONFIG.authDomain : fromEnv.authDomain,
@@ -54,7 +54,7 @@ export function resolveFirebaseConfig(): FirebaseClientConfig {
 }
 
 export function isFirebaseReady(): boolean {
-  if (useFirebaseEmulators()) return true
+  if (firebaseEmulatorsEnabled()) return true
 
   const config = resolveFirebaseConfig()
   return (

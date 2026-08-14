@@ -16,7 +16,7 @@ const ADMIN = {
   displayName: 'Local Admin',
 }
 
-function firestoreValue(value: string | boolean | number) {
+function firestoreValue(value) {
   if (typeof value === 'string') return { stringValue: value }
   if (typeof value === 'boolean') return { booleanValue: value }
   return { integerValue: String(value) }
@@ -36,7 +36,7 @@ async function createAuthUser() {
     },
   )
 
-  const data = (await res.json()) as { localId?: string; error?: { message?: string } }
+  const data = await res.json()
   if (!res.ok) {
     if (data.error?.message?.includes('EMAIL_EXISTS')) {
       const lookup = await fetch(
@@ -47,7 +47,7 @@ async function createAuthUser() {
           body: JSON.stringify({ email: [ADMIN.email] }),
         },
       )
-      const lookupData = (await lookup.json()) as { users?: Array<{ localId: string }> }
+      const lookupData = await lookup.json()
       const uid = lookupData.users?.[0]?.localId
       if (!uid) throw new Error('Admin user exists but could not be looked up')
       console.log('Admin user already exists, reusing profile.')
@@ -60,7 +60,7 @@ async function createAuthUser() {
   return data.localId
 }
 
-async function writeDocument(collection: string, docId: string, fields: Record<string, unknown>) {
+async function writeDocument(collection, docId, fields) {
   const res = await fetch(
     `http://${FIRESTORE_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents/${collection}?documentId=${docId}`,
     {

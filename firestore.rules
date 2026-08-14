@@ -41,6 +41,61 @@ service cloud.firestore {
       return punches is list && punches.size() <= 20;
     }
 
+    // Midnight UTC of a 'YYYY-MM-DD' work date.
+    function workDateStart(workDate) {
+      return timestamp.date(
+        int(workDate[0:4]),
+        int(workDate[5:7]),
+        int(workDate[8:10])
+      );
+    }
+
+    // A punch must be a well-formed interval landing near its work date.
+    // `clockOut` is null while the punch is still open. The window is padded a
+    // day either side because punch timestamps are stored in the employee's
+    // local time while the work date boundary here is UTC.
+    function validPunch(punch, workDate) {
+      return punch is map
+        && punch.keys().hasOnly(['clockIn', 'clockOut'])
+        && punch.get('clockIn', null) is timestamp
+        && punch.clockIn >= workDateStart(workDate) - duration.value(1, 'd')
+        && punch.clockIn < workDateStart(workDate) + duration.value(2, 'd')
+        && (
+          punch.get('clockOut', null) == null
+          || (
+            punch.clockOut is timestamp
+            && punch.clockOut >= punch.clockIn
+            && punch.clockOut <= punch.clockIn + duration.value(24, 'h')
+          )
+        );
+    }
+
+    // The rules language has no loops, so each slot is checked explicitly up to
+    // the 20-punch cap enforced by validPunchesList.
+    function validPunchesContent(punches, workDate) {
+      return validPunchesList(punches)
+        && (punches.size() < 1 || validPunch(punches[0], workDate))
+        && (punches.size() < 2 || validPunch(punches[1], workDate))
+        && (punches.size() < 3 || validPunch(punches[2], workDate))
+        && (punches.size() < 4 || validPunch(punches[3], workDate))
+        && (punches.size() < 5 || validPunch(punches[4], workDate))
+        && (punches.size() < 6 || validPunch(punches[5], workDate))
+        && (punches.size() < 7 || validPunch(punches[6], workDate))
+        && (punches.size() < 8 || validPunch(punches[7], workDate))
+        && (punches.size() < 9 || validPunch(punches[8], workDate))
+        && (punches.size() < 10 || validPunch(punches[9], workDate))
+        && (punches.size() < 11 || validPunch(punches[10], workDate))
+        && (punches.size() < 12 || validPunch(punches[11], workDate))
+        && (punches.size() < 13 || validPunch(punches[12], workDate))
+        && (punches.size() < 14 || validPunch(punches[13], workDate))
+        && (punches.size() < 15 || validPunch(punches[14], workDate))
+        && (punches.size() < 16 || validPunch(punches[15], workDate))
+        && (punches.size() < 17 || validPunch(punches[16], workDate))
+        && (punches.size() < 18 || validPunch(punches[17], workDate))
+        && (punches.size() < 19 || validPunch(punches[18], workDate))
+        && (punches.size() < 20 || validPunch(punches[19], workDate));
+    }
+
     function validOfflineSyncMeta() {
       return !request.resource.data.keys().hasAny(['offlineSyncMeta'])
         || (
@@ -108,11 +163,8 @@ service cloud.firestore {
     // Employees may only touch clock/punch data, submission fields, and edit
     // history. Notably absent: employeeId, workDate, employeeName, and any
     // admin review fields (approvedAt, reviewedBy, ...).
-    function employeeEntryUpdate() {
-      return isEmployee()
-        && resource.data.employeeId == request.auth.uid
-        && resource.data.status in ['draft', 'submitted', 'rejected']
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+    function employeePunchEdit() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'punches',
           'clockIn',
           'clockOut',
@@ -131,10 +183,32 @@ service cloud.firestore {
           request.resource.data.status == resource.data.status
           || request.resource.data.status in ['draft', 'submitted']
         )
-        && validPunchesList(request.resource.data.punches)
+        && validPunchesContent(request.resource.data.punches, resource.data.workDate)
         && validPunchSource()
         && validOfflineSyncMeta()
         && validEditHistoryChange();
+    }
+
+    // Once submitted, the entry is evidence for payroll. The only employee
+    // action left is withdrawing it back to draft; punches stay frozen.
+    function employeeStatusOnlyChange() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'submittedAt',
+          'offlineSyncMeta',
+          'updatedAt',
+        ])
+        && request.resource.data.status == 'draft'
+        && validOfflineSyncMeta();
+    }
+
+    function employeeEntryUpdate() {
+      return isEmployee()
+        && resource.data.employeeId == request.auth.uid
+        && (
+          (resource.data.status in ['draft', 'rejected'] && employeePunchEdit())
+          || (resource.data.status == 'submitted' && employeeStatusOnlyChange())
+        );
     }
 
     // Any change to editHistory must append an entry with a meaningful reason.
@@ -162,7 +236,7 @@ service cloud.firestore {
         && request.resource.data.workDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
         // Doc ID must encode the owner and work date: {uid}_{workDate}.
         && entryId == request.auth.uid + '_' + request.resource.data.workDate
-        && validPunchesList(request.resource.data.punches)
+        && validPunchesContent(request.resource.data.punches, request.resource.data.workDate)
         && (
           request.resource.data.keys().hasOnly([
             'employeeId',
@@ -190,10 +264,12 @@ service cloud.firestore {
           )
         );
       allow update: if adminReviewUpdate() || employeeEntryUpdate();
+      // Only drafts may be removed: deleting a submitted or rejected entry
+      // would erase the review trail.
       allow delete: if (
         isEmployee() &&
         resource.data.employeeId == request.auth.uid &&
-        resource.data.status in ['draft', 'submitted', 'rejected']
+        resource.data.status == 'draft'
       );
     }
 
@@ -205,7 +281,7 @@ service cloud.firestore {
     }
 
     match /taxRates/{rateId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && isActiveUser();
       allow create: if isAdmin();
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['effectiveTo', 'updatedAt']);
@@ -237,8 +313,9 @@ service cloud.firestore {
 
     match /settings/{docId} {
       // The company doc is intentionally public: login/home pages show
-      // company branding before sign-in. Do not store secrets in it.
-      allow read: if isSignedIn() || docId == 'company';
+      // company branding before sign-in. Do not store secrets in it. Every
+      // other settings doc (payroll config, integrations) is admin-only.
+      allow read: if docId == 'company' || isAdmin();
       allow write: if isAdmin();
     }
 

@@ -142,7 +142,15 @@ export async function getUnlockAttempts(): Promise<UnlockAttempts> {
   try {
     return await decryptUnlockAttempts(raw)
   } catch {
-    return { count: 0, lockedUntil: null }
+    // A record exists but will not decrypt, so it was tampered with or bound to
+    // another device. Fail closed and rewrite a valid locked record, otherwise
+    // corrupting this blob would be a free way to clear the lockout.
+    const locked: UnlockAttempts = {
+      count: MAX_UNLOCK_ATTEMPTS,
+      lockedUntil: new Date(Date.now() + LOCKOUT_MS).toISOString(),
+    }
+    await saveUnlockAttempts(locked)
+    return locked
   }
 }
 

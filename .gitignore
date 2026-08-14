@@ -16,6 +16,7 @@ server/.env
 functions/.env
 
 # Credentials — never commit these
+**/.secret.local
 *serviceAccount*.json
 *service-account*.json
 *.pem

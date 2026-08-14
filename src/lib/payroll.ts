@@ -372,5 +372,14 @@ export function exportPayrollCsv(
     e.tax != null ? e.tax.toFixed(2) : '',
     e.netPay != null ? e.netPay.toFixed(2) : '',
   ])
-  return [header, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n')
+  return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\n')
+}
+
+// Spreadsheets evaluate a cell that opens with =, +, - or @ as a formula, so a
+// name like "=HYPERLINK(...)" would execute on open. A leading apostrophe
+// forces the cell to be read as text.
+function csvCell(value: string): string {
+  const escaped = value.replace(/"/g, '""')
+  const safe = /^[=+\-@\t\r]/.test(escaped) ? `'${escaped}` : escaped
+  return `"${safe}"`
 }

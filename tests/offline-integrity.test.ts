@@ -4,7 +4,6 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import { Timestamp } from 'firebase/firestore'
 import { deriveKey, encryptJson, decryptJson, setSessionKey, clearSessionKey } from '../src/lib/offline/encryptedVault'
-import type { TimeEntry } from '../src/lib/types'
 import { withIntegrity, verifyEntryIntegrity } from '../src/lib/offline/integrity'
 import type { StoredTimeEntry } from '../src/lib/offline/types'
 

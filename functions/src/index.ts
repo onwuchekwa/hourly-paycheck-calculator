@@ -16,14 +16,20 @@ initializeApp()
 const db = getFirestore()
 const auth = getAuth()
 
+const MAX_BATCH_EMAILS = 500
+
 function generateTempPassword(): string {
   return randomBytes(12).toString('base64url').slice(0, 16)
 }
 
 async function assertAdmin(uid: string): Promise<void> {
   const userDoc = await db.collection('users').doc(uid).get()
-  const role = userDoc.data()?.role
-  if (!userDoc.exists || (role !== 'admin' && role !== 'employer')) {
+  const data = userDoc.data()
+  const role = data?.role
+  // Deactivated admins keep their Auth session until it expires, so the
+  // `active` flag has to be checked here as well as in the rules.
+  const isActive = data?.active !== false
+  if (!userDoc.exists || (role !== 'admin' && role !== 'employer') || !isActive) {
     throw new HttpsError('permission-denied', 'Only admins can perform this action.')
   }
 }
@@ -132,22 +138,9 @@ export const createEmployee = onCall({ secrets: [smtpPass] }, async (request) =>
     return { uid: userRecord.uid, email: normalizedEmail, mailId: mailRef.id }
   } catch (err) {
     await auth.deleteUser(userRecord.uid).catch(() => undefined)
-    const message = err instanceof Error ? err.message : 'Failed to create employee.'
-    throw new HttpsError('internal', message)
+    console.error('createEmployee failed', err)
+    throw new HttpsError('internal', 'Failed to create employee. Please try again.')
   }
-})
-
-export const clearMustChangePassword = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Authentication required.')
-  }
-
-  await db.collection('users').doc(request.auth.uid).update({
-    mustChangePassword: false,
-    updatedAt: FieldValue.serverTimestamp(),
-  })
-
-  return { success: true }
 })
 
 async function buildPaySlipMail(slipId: string) {
@@ -230,6 +223,13 @@ export const emailPaySlipsBatch = onCall({ secrets: [smtpPass] }, async (request
 
   if (slipsSnap.empty) {
     throw new HttpsError('not-found', 'No pay slips found for this payroll run.')
+  }
+
+  if (slipsSnap.size > MAX_BATCH_EMAILS) {
+    throw new HttpsError(
+      'invalid-argument',
+      `This payroll run has more than ${MAX_BATCH_EMAILS} pay slips. Send them in smaller runs.`,
+    )
   }
 
   const mailIds: string[] = []

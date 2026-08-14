@@ -5,8 +5,8 @@ import {
   getSessionKey,
   isVaultUnlocked,
 } from './encryptedVault'
-import { storedEntryFromJson, storedEntryToJson, timeEntryFromJson, timeEntryToJson } from './serialization'
-import { withIntegrity } from './integrity'
+import { storedEntryFromJson, storedEntryToJson } from './serialization'
+import { verifyEntryIntegrity, withIntegrity } from './integrity'
 import type { StoredTimeEntry } from './types'
 import type { TimeEntry } from '../types'
 
@@ -48,25 +48,42 @@ export async function clearPendingData(employeeId: string): Promise<void> {
   localStorage.removeItem(PENDING_PREFIX + employeeId)
 }
 
-type SnapshotJson = ReturnType<typeof timeEntryToJson>
+type SnapshotJson = ReturnType<typeof storedEntryToJson>
 
-export async function getSnapshotEntries(employeeId: string): Promise<TimeEntry[]> {
+// Snapshots keep their HMAC so callers can verify them the same way pending
+// entries are verified. Entries written by older builds carry no signature and
+// surface with an empty `integrity`, which readers must treat as untrusted.
+export async function getSnapshotEntries(employeeId: string): Promise<StoredTimeEntry[]> {
   const raw = await readEncrypted<SnapshotJson[]>(SNAPSHOT_PREFIX + employeeId)
   if (!raw) return []
-  return raw.map(timeEntryFromJson)
+  return raw.map((json) =>
+    storedEntryFromJson({
+      ...json,
+      syncStatus: 'pending',
+      localUpdatedAt: json.localUpdatedAt ?? '',
+      localRevision: json.localRevision ?? 0,
+      integrity: json.integrity ?? '',
+    }),
+  )
 }
 
 export async function setSnapshotEntries(employeeId: string, entries: StoredTimeEntry[]): Promise<void> {
   await writeEncrypted(
     SNAPSHOT_PREFIX + employeeId,
-    entries.map((e) => timeEntryToJson(e)),
+    entries.map(storedEntryToJson),
   )
 }
 
 export async function upsertSnapshotEntry(employeeId: string, entry: TimeEntry): Promise<void> {
   if (!isLocalStoreAccessible(employeeId)) return
   const existing = await getSnapshotEntries(employeeId)
-  const map = new Map(existing.map((e) => [e.id, e]))
+  const verified = await Promise.all(
+    existing.map(async (e) => ((await verifyEntryIntegrity(e)) ? e : null)),
+  )
+  const map = new Map<string, TimeEntry>()
+  for (const e of verified) {
+    if (e) map.set(e.id, e)
+  }
   map.set(entry.id, entry)
   const stored = await Promise.all(
     [...map.values()].map((e) =>
@@ -94,14 +111,10 @@ export async function mergeSnapshotAndPending(employeeId: string): Promise<Store
   const pending = await getPendingEntries(employeeId)
   const map = new Map<string, StoredTimeEntry>()
 
+  // Keep the snapshot's signed fields intact; rewriting them here would
+  // invalidate the HMAC that callers verify.
   for (const entry of snapshot) {
-    map.set(entry.id, {
-      ...entry,
-      syncStatus: 'pending',
-      localUpdatedAt: '',
-      localRevision: 0,
-      integrity: '',
-    })
+    map.set(entry.id, entry)
   }
   for (const entry of pending) {
     map.set(entry.id, entry)

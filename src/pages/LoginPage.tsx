@@ -5,7 +5,7 @@ import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { CompanyBranding } from '../components/CompanyBranding'
 import { AlertBanner } from '../components/AlertBanner'
 import { LoadingSpinner } from '../components/LoadingSpinner'
-import { useFirebaseEmulators } from '../lib/firebase-config'
+import { firebaseEmulatorsEnabled } from '../lib/firebase-config'
 import { getAuthErrorMessage } from '../lib/errors'
 import { adminHomePath } from '../lib/roles'
 import {
@@ -34,7 +34,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const usingEmulators = useFirebaseEmulators()
+  const usingEmulators = firebaseEmulatorsEnabled()
   const offline = !navigator.onLine
 
   useEffect(() => {

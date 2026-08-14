@@ -15,6 +15,7 @@ import {
 import { db } from '../firebase'
 import type { TimeEntry } from '../types'
 import {
+  canEditEntry,
   endOfWorkDate,
   findGlobalOpenPunch,
   getOpenPunch,
@@ -77,7 +78,7 @@ export async function applyPendingOverlay(
   const pending = await getPendingEntries(employeeId)
   const map = new Map(serverEntries.map((entry) => [entry.id, normalizeEntry(entry)]))
   for (const entry of pending) {
-    if (entry.integrity && !(await verifyEntryIntegrity(entry))) continue
+    if (!(await verifyEntryIntegrity(entry))) continue
     map.set(entry.id, normalizeEntry(entry))
   }
   return [...map.values()]
@@ -87,7 +88,7 @@ async function readMergedEntries(employeeId: string): Promise<TimeEntry[]> {
   const merged = await mergeSnapshotAndPending(employeeId)
   const valid: TimeEntry[] = []
   for (const entry of merged) {
-    if (entry.integrity && !(await verifyEntryIntegrity(entry))) continue
+    if (!(await verifyEntryIntegrity(entry))) continue
     const normalized = normalizeEntry(entry)
     if (isDraftOrSubmitted(normalized) || normalized.status === 'rejected') {
       valid.push(normalized)
@@ -100,7 +101,7 @@ async function readMergedHistoryEntries(employeeId: string): Promise<TimeEntry[]
   const merged = await mergeSnapshotAndPending(employeeId)
   const valid: TimeEntry[] = []
   for (const entry of merged) {
-    if (entry.integrity && !(await verifyEntryIntegrity(entry))) continue
+    if (!(await verifyEntryIntegrity(entry))) continue
     valid.push(normalizeEntry(entry))
   }
   return valid.sort((a, b) => b.workDate.localeCompare(a.workDate))
@@ -325,6 +326,7 @@ export async function repositoryAutoCloseStalePunches(employeeId: string): Promi
 
   for (const entry of entries) {
     if (entry.workDate >= today) continue
+    if (!canEditEntry(entry)) continue
     const open = getOpenPunch(entry)
     if (!open) continue
 

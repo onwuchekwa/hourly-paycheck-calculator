@@ -6,7 +6,7 @@
  *   npx tsx scripts/createEmployer.ts --email admin@company.com --name "Admin User" --password "securepass123"
  */
 
-import { initializeApp, cert, getApps } from 'firebase-admin/app'
+import { initializeApp, getApps } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 

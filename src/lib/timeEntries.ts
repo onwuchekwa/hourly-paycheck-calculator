@@ -271,6 +271,7 @@ export async function autoCloseStalePunches(employeeId: string): Promise<void> {
 
   for (const entry of entries) {
     if (entry.workDate >= today) continue
+    if (!canEditEntry(entry)) continue
     const open = getOpenPunch(entry)
     if (!open) continue
 
@@ -304,12 +305,14 @@ export function canSubmitEntry(entry: TimeEntry): boolean {
   return hasCompletedPunch(entry)
 }
 
+// Mirrors firestore.rules: a submitted entry is frozen until an admin acts on
+// it, and only drafts can be removed so the review trail survives.
 function isEmployeeEditableStatus(status: string): boolean {
-  return status === 'draft' || status === 'submitted' || status === 'rejected'
+  return status === 'draft' || status === 'rejected'
 }
 
 export function canDeleteEntry(entry: TimeEntry): boolean {
-  return isEmployeeEditableStatus(entry.status)
+  return entry.status === 'draft'
 }
 
 export function canEditEntry(entry: TimeEntry): boolean {

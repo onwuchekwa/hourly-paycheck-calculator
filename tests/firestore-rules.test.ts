@@ -27,6 +27,13 @@ const ENTRY_ID = `${EMP_UID}_${WORK_DATE}`
 
 let testEnv: RulesTestEnvironment
 
+/** The app always aligns punches to the entry's work date, so tests must too. */
+function onWorkDate(hour: number, minute = 0, workDate = WORK_DATE) {
+  const hh = String(hour).padStart(2, '0')
+  const mm = String(minute).padStart(2, '0')
+  return new Date(`${workDate}T${hh}:${mm}:00`)
+}
+
 function db(uid: string | null) {
   if (!uid) return testEnv.unauthenticatedContext().firestore()
   return testEnv.authenticatedContext(uid).firestore()
@@ -169,7 +176,7 @@ describe('timeEntries — legitimate employee flows still work', () => {
   it('allows clock in/out punch updates', async () => {
     await assertSucceeds(
       db(EMP_UID).doc(`timeEntries/${ENTRY_ID}`).update({
-        punches: [{ clockIn: new Date(), clockOut: null }],
+        punches: [{ clockIn: onWorkDate(9), clockOut: null }],
         clockIn: null, clockOut: null, punchSource: 'button', updatedAt: new Date(),
       }),
     )
@@ -187,7 +194,7 @@ describe('timeEntries — legitimate employee flows still work', () => {
   it('allows a session edit with a valid edit reason', async () => {
     await assertSucceeds(
       db(EMP_UID).doc(`timeEntries/${ENTRY_ID}`).update({
-        punches: [{ clockIn: new Date(), clockOut: new Date() }],
+        punches: [{ clockIn: onWorkDate(9), clockOut: onWorkDate(17) }],
         clockIn: null, clockOut: null, punchSource: 'manual_edit',
         editHistory: [{
           editedAt: new Date(), editedBy: EMP_UID, editedByName: 'Emp One',
@@ -202,7 +209,7 @@ describe('timeEntries — legitimate employee flows still work', () => {
   it('denies a session edit with a too-short edit reason', async () => {
     await assertFails(
       db(EMP_UID).doc(`timeEntries/${ENTRY_ID}`).update({
-        punches: [{ clockIn: new Date(), clockOut: new Date() }],
+        punches: [{ clockIn: onWorkDate(9), clockOut: onWorkDate(17) }],
         clockIn: null, clockOut: null, punchSource: 'manual_edit',
         editHistory: [{
           editedAt: new Date(), editedBy: EMP_UID, editedByName: 'Emp One',
@@ -227,6 +234,83 @@ describe('timeEntries — legitimate employee flows still work', () => {
   it('denies reading another employee\'s entry', async () => {
     await assertFails(
       db(EMP_UID).doc(`timeEntries/${OTHER_EMP_UID}_${WORK_DATE}`).get(),
+    )
+  })
+})
+
+describe('timeEntries — submitted entries are locked', () => {
+  async function submitOwnEntry() {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`timeEntries/${ENTRY_ID}`).update({
+        status: 'submitted',
+        punches: [{ clockIn: onWorkDate(9), clockOut: onWorkDate(17) }],
+      })
+    })
+  }
+
+  it('denies editing punches on a submitted entry', async () => {
+    await submitOwnEntry()
+    await assertFails(
+      db(EMP_UID).doc(`timeEntries/${ENTRY_ID}`).update({
+        punches: [{ clockIn: onWorkDate(6), clockOut: onWorkDate(22) }],
+        updatedAt: new Date(),
+      }),
+    )
+  })
+
+  it('allows withdrawing a submitted entry back to draft', async () => {
+    await submitOwnEntry()
+    await assertSucceeds(
+      db(EMP_UID).doc(`timeEntries/${ENTRY_ID}`).update({
+        status: 'draft', submittedAt: null, updatedAt: new Date(),
+      }),
+    )
+  })
+
+  it('denies deleting a submitted entry', async () => {
+    await submitOwnEntry()
+    await assertFails(db(EMP_UID).doc(`timeEntries/${ENTRY_ID}`).delete())
+  })
+
+  it('allows deleting a draft entry', async () => {
+    await assertSucceeds(db(EMP_UID).doc(`timeEntries/${ENTRY_ID}`).delete())
+  })
+})
+
+describe('timeEntries — punch payload validation', () => {
+  it('denies a punch whose clockOut precedes its clockIn', async () => {
+    await assertFails(
+      db(EMP_UID).doc(`timeEntries/${ENTRY_ID}`).update({
+        punches: [{ clockIn: onWorkDate(17), clockOut: onWorkDate(9) }],
+        updatedAt: new Date(),
+      }),
+    )
+  })
+
+  it('denies a punch dated far from the entry work date', async () => {
+    await assertFails(
+      db(EMP_UID).doc(`timeEntries/${ENTRY_ID}`).update({
+        punches: [{ clockIn: onWorkDate(9, 0, '2026-01-05'), clockOut: onWorkDate(17, 0, '2026-01-05') }],
+        updatedAt: new Date(),
+      }),
+    )
+  })
+
+  it('denies a punch with non-timestamp values', async () => {
+    await assertFails(
+      db(EMP_UID).doc(`timeEntries/${ENTRY_ID}`).update({
+        punches: [{ clockIn: '2026-07-20T09:00:00', clockOut: null }],
+        updatedAt: new Date(),
+      }),
+    )
+  })
+
+  it('denies a punch carrying unexpected fields', async () => {
+    await assertFails(
+      db(EMP_UID).doc(`timeEntries/${ENTRY_ID}`).update({
+        punches: [{ clockIn: onWorkDate(9), clockOut: onWorkDate(17), hours: 40 }],
+        updatedAt: new Date(),
+      }),
     )
   })
 })
@@ -363,6 +447,14 @@ describe('settings', () => {
     await assertFails(db(null).doc('settings/payroll').get())
   })
 
+  it('denies employee reading payroll settings', async () => {
+    await assertFails(db(EMP_UID).doc('settings/payroll').get())
+  })
+
+  it('allows admin reading payroll settings', async () => {
+    await assertSucceeds(db(ADMIN_UID).doc('settings/payroll').get())
+  })
+
   it('denies employee writing settings', async () => {
     await assertFails(
       db(EMP_UID).doc('settings/company').update({ companyName: 'Hacked' }),
@@ -373,6 +465,10 @@ describe('settings', () => {
 describe('taxRates', () => {
   it('allows employee reading tax rates', async () => {
     await assertSucceeds(db(EMP_UID).doc('taxRates/seed1').get())
+  })
+
+  it('denies inactive employee reading tax rates', async () => {
+    await assertFails(db(INACTIVE_UID).doc('taxRates/seed1').get())
   })
 
   it('allows admin creating a tax rate', async () => {

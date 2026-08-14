@@ -68,6 +68,14 @@
       "collectionGroup": "payrollRuns",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "payPeriodId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "payrollRuns",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]

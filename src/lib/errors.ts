@@ -23,6 +23,8 @@ const CALLABLE_MESSAGES: Record<string, string> = {
   'unauthenticated': 'Please sign in again.',
   'not-found': 'The requested item was not found.',
   'failed-precondition': 'This action cannot be completed right now.',
+  'resource-exhausted':
+    'Database quota exceeded. Wait a few minutes and try again, or upgrade your Firebase plan.',
   unavailable: 'Could not reach the API. Check your connection and VITE_API_URL.',
   internal: 'Something went wrong. Please try again.',
 }

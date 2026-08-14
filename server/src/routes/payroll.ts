@@ -1,10 +1,13 @@
 import { Router } from 'express'
+import type { DocumentReference } from 'firebase-admin/firestore'
 import { FieldValue } from 'firebase-admin/firestore'
 import { assertAdmin, requireAuth, type AuthedRequest } from '../auth.js'
 import { getDb } from '../admin.js'
-import { ApiError } from '../errors.js'
+import { ApiError, mapFirestoreError } from '../errors.js'
 
 export const payrollRouter = Router()
+
+const BATCH_LIMIT = 499
 
 function requireDocId(value: unknown, name: string): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 256 || value.includes('/')) {
@@ -13,15 +16,25 @@ function requireDocId(value: unknown, name: string): string {
   return value
 }
 
+async function commitBatchDeletes(refs: DocumentReference[]): Promise<void> {
+  const db = getDb()
+  for (let i = 0; i < refs.length; i += BATCH_LIMIT) {
+    const batch = db.batch()
+    for (const ref of refs.slice(i, i + BATCH_LIMIT)) {
+      batch.delete(ref)
+    }
+    await batch.commit()
+  }
+}
+
 payrollRouter.post('/rollback', requireAuth, async (req, res, next) => {
   try {
     const { uid } = req as AuthedRequest
     await assertAdmin(uid)
 
-    const payrollRunId = requireDocId(
-      (req.body as { payrollRunId?: unknown }).payrollRunId,
-      'payrollRunId',
-    )
+    const body = req.body as { payrollRunId?: unknown; reopenPeriod?: unknown }
+    const payrollRunId = requireDocId(body.payrollRunId, 'payrollRunId')
+    const reopenPeriod = body.reopenPeriod === true
 
     const db = getDb()
     const runRef = db.collection('payrollRuns').doc(payrollRunId)
@@ -37,23 +50,27 @@ payrollRouter.post('/rollback', requireAuth, async (req, res, next) => {
     }
 
     const payPeriodId = run.payPeriodId as string
-    const slipsSnap = await db.collection('paySlips').where('payrollRunId', '==', payrollRunId).get()
+    const entries = (run.entries ?? []) as Array<{ employeeId?: string }>
 
-    const batch = db.batch()
-    for (const slipDoc of slipsSnap.docs) {
-      batch.delete(slipDoc.ref)
+    // Pay slip doc IDs are deterministic: {runId}_{employeeId}. Deleting by ID
+    // avoids a collection query and saves read quota on every rollback.
+    let slipRefs: DocumentReference[] = entries
+      .filter((e) => typeof e.employeeId === 'string' && e.employeeId.length > 0)
+      .map((e) => db.collection('paySlips').doc(`${payrollRunId}_${e.employeeId}`))
+
+    if (slipRefs.length === 0) {
+      const slipsSnap = await db
+        .collection('paySlips')
+        .where('payrollRunId', '==', payrollRunId)
+        .get()
+      slipRefs = slipsSnap.docs.map((d) => d.ref)
     }
-    batch.delete(runRef)
-    await batch.commit()
 
-    const remainingSnap = await db
-      .collection('payrollRuns')
-      .where('payPeriodId', '==', payPeriodId)
-      .where('status', '==', 'finalized')
-      .get()
+    await commitBatchDeletes(slipRefs)
+    await runRef.delete()
 
     let payPeriodReopened = false
-    if (remainingSnap.empty) {
+    if (reopenPeriod) {
       await db.collection('payPeriods').doc(payPeriodId).update({
         status: 'open',
         closedAt: FieldValue.delete(),
@@ -64,9 +81,13 @@ payrollRouter.post('/rollback', requireAuth, async (req, res, next) => {
     res.json({
       success: true,
       payPeriodReopened,
-      deletedSlipCount: slipsSnap.size,
+      deletedSlipCount: slipRefs.length,
     })
   } catch (err) {
-    next(err)
+    if (err instanceof ApiError) {
+      next(err)
+      return
+    }
+    next(mapFirestoreError(err))
   }
 })

@@ -426,7 +426,10 @@ export function PayrollRunsPage() {
         success: boolean
         payPeriodReopened: boolean
         deletedSlipCount: number
-      }>('/api/payroll/rollback', { payrollRunId: run.id })
+      }>('/api/payroll/rollback', {
+        payrollRunId: run.id,
+        reopenPeriod: isLastFinalizedRunForPeriod(runs, run.id, run.payPeriodId),
+      })
       setRollbackTarget(null)
       setSuccess(
         result.payPeriodReopened

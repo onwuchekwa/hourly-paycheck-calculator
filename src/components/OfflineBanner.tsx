@@ -7,18 +7,6 @@ export function OfflineBanner() {
   const { mode, syncing, lastSyncResult, isOnline } = useConnectivity()
   const { profile } = useAuth()
 
-  if (isOnline && !syncing && !lastSyncResult?.errors.length && !lastSyncResult?.conflicts.length) {
-    if (!profile?.uid || !hasPendingData(profile.uid)) return null
-  }
-
-  if (isOnline && syncing) {
-    return (
-      <AlertBanner variant="info" className="mb-4">
-        Syncing your offline changes…
-      </AlertBanner>
-    )
-  }
-
   if (mode === 'degraded') {
     return (
       <AlertBanner variant="warning" className="mb-4">
@@ -33,6 +21,18 @@ export function OfflineBanner() {
         Offline — changes saved locally and will sync when you reconnect.
       </AlertBanner>
     )
+  }
+
+  if (isOnline && syncing) {
+    return (
+      <AlertBanner variant="info" className="mb-4">
+        Syncing your offline changes…
+      </AlertBanner>
+    )
+  }
+
+  if (isOnline && !syncing && !lastSyncResult?.errors.length && !lastSyncResult?.conflicts.length) {
+    if (!profile?.uid || !hasPendingData(profile.uid)) return null
   }
 
   if (lastSyncResult?.errors.length) {

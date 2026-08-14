@@ -3,8 +3,12 @@ import type { ConnectivityMode } from './types'
 type Listener = (mode: ConnectivityMode) => void
 type FailureListener = () => void
 
+const ONLINE_SUCCESS_THRESHOLD = 2
+
 let mode: ConnectivityMode = typeof navigator !== 'undefined' && navigator.onLine ? 'online' : 'offline'
 let failureCount = 0
+let successStreak = 0
+let suppressFailureReports = false
 const listeners = new Set<Listener>()
 const failureListeners = new Set<FailureListener>()
 
@@ -29,7 +33,13 @@ export function subscribeConnectivityFailures(fn: FailureListener): () => void {
   return () => failureListeners.delete(fn)
 }
 
+export function setSuppressConnectivityFailures(value: boolean): void {
+  suppressFailureReports = value
+}
+
 export function reportConnectivityFailure(): void {
+  if (suppressFailureReports) return
+  successStreak = 0
   failureCount += 1
   if (!navigator.onLine) {
     setConnectivityMode('offline')
@@ -40,8 +50,14 @@ export function reportConnectivityFailure(): void {
 }
 
 export function reportConnectivitySuccess(): void {
-  failureCount = 0
-  if (navigator.onLine) {
+  if (!navigator.onLine) return
+  successStreak += 1
+  if (mode === 'online') {
+    failureCount = 0
+    return
+  }
+  if (successStreak >= ONLINE_SUCCESS_THRESHOLD) {
+    failureCount = 0
     setConnectivityMode('online')
   }
 }
@@ -81,4 +97,6 @@ export function shouldFallbackToLocal(err: unknown): boolean {
 export function resetConnectivityStateForTests(initial: ConnectivityMode = 'online'): void {
   mode = initial
   failureCount = 0
+  successStreak = 0
+  suppressFailureReports = false
 }

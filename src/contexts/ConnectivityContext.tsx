@@ -16,6 +16,7 @@ import {
   reportConnectivityFailure,
   reportConnectivitySuccess,
   setConnectivityMode,
+  setSuppressConnectivityFailures,
   subscribeConnectivity,
   subscribeConnectivityFailures,
 } from '../lib/offline/connectivityState'
@@ -39,6 +40,7 @@ const HEARTBEAT_MS = 10_000
 const ONLINE_DEBOUNCE_MS = 2_000
 const FAILURE_PROBE_DEBOUNCE_MS = 1_000
 const PROBE_TIMEOUT_MS = 5_000
+const SYNC_STABLE_MS = 3_000
 
 async function probeConnectivity(): Promise<boolean> {
   if (!navigator.onLine) return false
@@ -109,11 +111,13 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
       return { synced: 0, conflicts: [], tampered: [], errors: ['Not online'] }
     }
     setSyncing(true)
+    setSuppressConnectivityFailures(true)
     try {
       const result = await flushSync(employeeId)
       setLastSyncResult(result)
       return result
     } finally {
+      setSuppressConnectivityFailures(false)
       setSyncing(false)
     }
   }, [])
@@ -122,7 +126,10 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
     if (mode !== 'online') return
     const employeeId = auth.currentUser?.uid
     if (!employeeId || !isVaultUnlocked()) return
-    void triggerSync(employeeId)
+    const timer = setTimeout(() => {
+      if (getConnectivityMode() === 'online') void triggerSync(employeeId)
+    }, SYNC_STABLE_MS)
+    return () => clearTimeout(timer)
   }, [mode, triggerSync])
 
   useEffect(() => {

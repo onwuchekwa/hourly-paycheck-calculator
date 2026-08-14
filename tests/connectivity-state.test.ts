@@ -7,6 +7,7 @@ import {
   reportConnectivityFailure,
   reportConnectivitySuccess,
   resetConnectivityStateForTests,
+  setSuppressConnectivityFailures,
 } from '../src/lib/offline/connectivityState'
 
 describe('connectivityState', () => {
@@ -30,10 +31,35 @@ describe('connectivityState', () => {
     expect(getConnectivityMode()).toBe('offline')
   })
 
-  it('returns to online after successful probe while onLine', () => {
+  it('does not promote to online after a single success while degraded', () => {
     vi.stubGlobal('navigator', { onLine: true })
     reportConnectivityFailure()
     reportConnectivitySuccess()
+    expect(getConnectivityMode()).toBe('degraded')
+  })
+
+  it('promotes to online after two consecutive successes while degraded', () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    reportConnectivityFailure()
+    reportConnectivitySuccess()
+    reportConnectivitySuccess()
     expect(getConnectivityMode()).toBe('online')
+  })
+
+  it('resets success streak on failure', () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    reportConnectivityFailure()
+    reportConnectivitySuccess()
+    reportConnectivityFailure()
+    reportConnectivitySuccess()
+    expect(getConnectivityMode()).toBe('degraded')
+  })
+
+  it('ignores failures while suppress flag is set', () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    setSuppressConnectivityFailures(true)
+    reportConnectivityFailure()
+    expect(getConnectivityMode()).toBe('online')
+    setSuppressConnectivityFailures(false)
   })
 })

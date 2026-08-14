@@ -108,4 +108,17 @@
   body {
     background: white;
   }
+
+  .payslip-document {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .payslip-document img.company-branding-logo {
+    display: block !important;
+    visibility: visible !important;
+    max-height: 3.5rem;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

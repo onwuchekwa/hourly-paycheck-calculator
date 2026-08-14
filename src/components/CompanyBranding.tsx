@@ -42,8 +42,11 @@ export function CompanyBranding({
         {displayLogo && logoDataUrl && (
           <img
             src={logoDataUrl}
-            alt=""
-            className={classNames(logoHeights[size], 'w-auto shrink-0 object-contain')}
+            alt={`${name} logo`}
+            className={classNames(
+              logoHeights[size],
+              'company-branding-logo w-auto shrink-0 object-contain',
+            )}
           />
         )}
         <div className="min-w-0">

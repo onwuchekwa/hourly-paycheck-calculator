@@ -13,7 +13,7 @@ export default defineConfig({
       manifest: {
         name: 'Payroll',
         short_name: 'Payroll',
-        theme_color: '#aa3bff',
+        theme_color: '#2563eb',
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',

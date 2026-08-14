@@ -6,13 +6,16 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- Pay stub -->
   <rect x="128" y="144" width="256" height="224" rx="24" fill="#fff" fill-opacity="0.95"/>
   <rect x="168" y="184" width="120" height="16" rx="8" fill="#bfdbfe"/>
   <rect x="168" y="216" width="176" height="12" rx="6" fill="#dbeafe"/>
   <rect x="168" y="240" width="176" height="12" rx="6" fill="#dbeafe"/>
   <rect x="168" y="264" width="136" height="12" rx="6" fill="#dbeafe"/>
+  <!-- Dollar circle -->
   <circle cx="344" cy="296" r="56" fill="#2563eb"/>
   <path d="M344 272v80M328 288c0-8.837 7.163-16 16-16h8c8.837 0 16 7.163 16 16s-7.163 16-16 16h-16c-8.837 0-16 7.163-16 16s7.163 16 16 16h8c8.837 0 16-7.163 16-16" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Clock badge -->
   <circle cx="176" cy="128" r="52" fill="#fff"/>
   <circle cx="176" cy="128" r="36" stroke="#2563eb" stroke-width="8"/>
   <path d="M176 104v24l16 12" stroke="#2563eb" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>

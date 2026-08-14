@@ -1,7 +1,8 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import type { PaySlip } from '../lib/types'
 import { useCompanySettings } from '../contexts/CompanySettingsContext'
 import { resolveCompanyField, resolveCompanyName, resolveLogoDataUrl, resolveShowLogo } from '../lib/companyBranding'
+import { captureElementToCanvas } from '../lib/payslipExport'
 import { CompanyBranding } from './CompanyBranding'
 import { formatTaxRateLabel } from '../lib/tax'
 import { formatCurrency, formatDisplayDate, formatDecimalHours } from '../lib/utils'
@@ -14,6 +15,8 @@ interface PaySlipDocumentProps {
 
 export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocumentProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
   const { settings, appTitle } = useCompanySettings()
 
   const companyName = resolveCompanyName(paySlip.companyName, settings.companyName || appTitle)
@@ -30,19 +33,23 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
   const handlePrint = () => window.print()
 
   const handlePdf = async () => {
-    if (!ref.current) return
-    // Loaded on demand: these libraries are heavy and only needed for PDF export.
-    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-      import('html2canvas'),
-      import('jspdf'),
-    ])
-    const canvas = await html2canvas(ref.current, { scale: 2 })
-    const img = canvas.toDataURL('image/png')
-    const pdf = new jsPDF('p', 'mm', 'a4')
-    const w = pdf.internal.pageSize.getWidth()
-    const h = (canvas.height * w) / canvas.width
-    pdf.addImage(img, 'PNG', 0, 0, w, h)
-    pdf.save(`${paySlip.paySlipNumber}.pdf`)
+    if (!ref.current || exporting) return
+    setExporting(true)
+    setExportError('')
+    try {
+      const canvas = await captureElementToCanvas(ref.current)
+      const { jsPDF } = await import('jspdf')
+      const img = canvas.toDataURL('image/png')
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const w = pdf.internal.pageSize.getWidth()
+      const h = (canvas.height * w) / canvas.width
+      pdf.addImage(img, 'PNG', 0, 0, w, h)
+      pdf.save(`${paySlip.paySlipNumber}.pdf`)
+    } catch {
+      setExportError('Could not generate PDF. Try Print and save as PDF instead.')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const lineColumns: ResponsiveTableColumn<(typeof paySlip.lineItems)[number]>[] = [
@@ -74,16 +81,21 @@ export function PaySlipDocument({ paySlip, showActions = true }: PaySlipDocument
   return (
     <div>
       {showActions && (
-        <div className="no-print mb-4 flex gap-2">
+        <div className="no-print mb-4 flex flex-wrap items-center gap-2">
           <button type="button" onClick={handlePrint} className="btn-secondary">
             Print
           </button>
-          <button type="button" onClick={handlePdf} className="btn-primary">
-            Download PDF
+          <button type="button" onClick={handlePdf} disabled={exporting} className="btn-primary">
+            {exporting ? 'Generating PDF…' : 'Download PDF'}
           </button>
+          {exportError && <p className="text-sm text-red-600">{exportError}</p>}
         </div>
       )}
-      <div ref={ref} className="card max-w-2xl print:border-0 print:shadow-none">
+      <div
+        ref={ref}
+        data-payslip-export
+        className="payslip-document card max-w-2xl print:border-0 print:shadow-none"
+      >
         <div className="border-b border-slate-200 pb-4 mb-4">
           <CompanyBranding
             name={companyName}

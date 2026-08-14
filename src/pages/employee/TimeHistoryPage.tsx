@@ -30,7 +30,7 @@ interface DeleteSessionTarget {
 
 export function TimeHistoryPage() {
   const { profile } = useAuth()
-  const { mode } = useConnectivity()
+  const { mode, ready } = useConnectivity()
   const employeeId = profile?.uid ?? ''
   const [entries, setEntries] = useState<TimeEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -59,7 +59,7 @@ export function TimeHistoryPage() {
     void load()
   }, [load])
 
-  useReloadOnConnectivityChange(mode, load)
+  useReloadOnConnectivityChange(mode, load, ready)
 
   const handleDeleteSession = async () => {
     if (!deleteTarget) return

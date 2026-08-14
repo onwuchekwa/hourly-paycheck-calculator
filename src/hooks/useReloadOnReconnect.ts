@@ -4,13 +4,29 @@ import type { ConnectivityMode } from '../lib/offline/types'
 const RECONNECT_STABLE_MS = 3_000
 
 /** Re-run callback when leaving or returning to online connectivity. */
-export function useReloadOnConnectivityChange(mode: ConnectivityMode, callback: () => void) {
+export function useReloadOnConnectivityChange(
+  mode: ConnectivityMode,
+  callback: () => void,
+  ready = true,
+) {
   const callbackRef = useRef(callback)
   callbackRef.current = callback
   const prevModeRef = useRef(mode)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const baselinedRef = useRef(false)
 
   useEffect(() => {
+    if (!ready) {
+      prevModeRef.current = mode
+      return
+    }
+
+    if (!baselinedRef.current) {
+      baselinedRef.current = true
+      prevModeRef.current = mode
+      return
+    }
+
     const prev = prevModeRef.current
     prevModeRef.current = mode
     if (prev === mode) return
@@ -34,7 +50,7 @@ export function useReloadOnConnectivityChange(mode: ConnectivityMode, callback: 
         callbackRef.current()
       }, RECONNECT_STABLE_MS)
     }
-  }, [mode])
+  }, [mode, ready])
 
   useEffect(() => {
     return () => {

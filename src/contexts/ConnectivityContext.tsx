@@ -26,6 +26,7 @@ import type { ConnectivityMode } from '../lib/offline/types'
 
 interface ConnectivityContextValue {
   mode: ConnectivityMode
+  ready: boolean
   isOnline: boolean
   isOfflineCapable: boolean
   syncing: boolean
@@ -37,6 +38,7 @@ interface ConnectivityContextValue {
 const ConnectivityContext = createContext<ConnectivityContextValue | null>(null)
 
 const HEARTBEAT_MS = 10_000
+const OFFLINE_HEARTBEAT_MS = 30_000
 const ONLINE_DEBOUNCE_MS = 2_000
 const FAILURE_PROBE_DEBOUNCE_MS = 1_000
 const PROBE_TIMEOUT_MS = 5_000
@@ -59,24 +61,38 @@ async function probeConnectivity(): Promise<boolean> {
 
 export function ConnectivityProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<ConnectivityMode>(getConnectivityMode())
+  const [ready, setReady] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null)
   const onlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const failureProbeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const readyRef = useRef(false)
 
   useEffect(() => {
     return subscribeConnectivity(setMode)
   }, [])
 
+  const markReady = useCallback(() => {
+    if (readyRef.current) return
+    readyRef.current = true
+    setReady(true)
+  }, [])
+
   const runProbe = useCallback(async () => {
     if (document.visibilityState === 'hidden') return
+    if (!navigator.onLine) {
+      reportConnectivityFailure()
+      markReady()
+      return
+    }
     const ok = await probeConnectivity()
     if (ok) {
       reportConnectivitySuccess()
     } else {
       reportConnectivityFailure()
     }
-  }, [])
+    markReady()
+  }, [markReady])
 
   useEffect(() => {
     const scheduleFailureProbe = () => {
@@ -95,16 +111,20 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
     const unsubFailures = subscribeConnectivityFailures(scheduleFailureProbe)
     void runProbe()
 
-    const interval = setInterval(() => void runProbe(), HEARTBEAT_MS)
     return () => {
       window.removeEventListener('online', onOnline)
       window.removeEventListener('offline', onOffline)
       unsubFailures()
-      clearInterval(interval)
       if (onlineTimerRef.current) clearTimeout(onlineTimerRef.current)
       if (failureProbeTimerRef.current) clearTimeout(failureProbeTimerRef.current)
     }
   }, [runProbe])
+
+  useEffect(() => {
+    const heartbeatMs = mode === 'online' ? HEARTBEAT_MS : OFFLINE_HEARTBEAT_MS
+    const interval = setInterval(() => void runProbe(), heartbeatMs)
+    return () => clearInterval(interval)
+  }, [mode, runProbe])
 
   const triggerSync = useCallback(async (employeeId: string) => {
     if (getConnectivityMode() !== 'online' || !employeeId) {
@@ -149,6 +169,7 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       mode,
+      ready,
       isOnline: mode === 'online',
       isOfflineCapable: mode !== 'online' && isVaultUnlocked(),
       syncing: syncing || isSyncInProgress(),
@@ -156,7 +177,7 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
       reportFailure: reportConnectivityFailure,
       triggerSync,
     }),
-    [mode, syncing, lastSyncResult, triggerSync],
+    [mode, ready, syncing, lastSyncResult, triggerSync],
   )
 
   return <ConnectivityContext.Provider value={value}>{children}</ConnectivityContext.Provider>

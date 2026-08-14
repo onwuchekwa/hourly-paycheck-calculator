@@ -15,7 +15,7 @@ const PENDING_STATUSES = new Set(['draft', 'submitted', 'rejected'])
 
 export function EmployeeDashboard() {
   const { profile } = useAuth()
-  const { mode } = useConnectivity()
+  const { mode, ready } = useConnectivity()
   const employeeId = profile?.uid ?? ''
   const [ytdGross, setYtdGross] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
@@ -58,7 +58,7 @@ export function EmployeeDashboard() {
     void load()
   }, [load])
 
-  useReloadOnConnectivityChange(mode, load)
+  useReloadOnConnectivityChange(mode, load, ready)
 
   if (loading) return <LoadingSpinner />
 

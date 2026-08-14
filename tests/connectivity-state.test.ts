@@ -8,6 +8,7 @@ import {
   reportConnectivitySuccess,
   resetConnectivityStateForTests,
   setSuppressConnectivityFailures,
+  subscribeConnectivityFailures,
 } from '../src/lib/offline/connectivityState'
 
 describe('connectivityState', () => {
@@ -17,6 +18,12 @@ describe('connectivityState', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it('starts degraded when navigator.onLine is true', () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    resetConnectivityStateForTests()
+    expect(getConnectivityMode()).toBe('degraded')
   })
 
   it('sets degraded on first failure while navigator.onLine is true', () => {
@@ -61,5 +68,32 @@ describe('connectivityState', () => {
     reportConnectivityFailure()
     expect(getConnectivityMode()).toBe('online')
     setSuppressConnectivityFailures(false)
+  })
+
+  it('does not notify failure listeners when already degraded', () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    resetConnectivityStateForTests('degraded')
+    let calls = 0
+    const unsub = subscribeConnectivityFailures(() => {
+      calls += 1
+    })
+    reportConnectivityFailure()
+    reportConnectivityFailure()
+    unsub()
+    expect(getConnectivityMode()).toBe('degraded')
+    expect(calls).toBe(0)
+  })
+
+  it('notifies failure listeners when mode worsens from online', () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    resetConnectivityStateForTests('online')
+    let calls = 0
+    const unsub = subscribeConnectivityFailures(() => {
+      calls += 1
+    })
+    reportConnectivityFailure()
+    unsub()
+    expect(getConnectivityMode()).toBe('degraded')
+    expect(calls).toBe(1)
   })
 })

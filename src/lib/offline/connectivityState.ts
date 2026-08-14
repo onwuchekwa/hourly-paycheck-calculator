@@ -5,7 +5,8 @@ type FailureListener = () => void
 
 const ONLINE_SUCCESS_THRESHOLD = 2
 
-let mode: ConnectivityMode = typeof navigator !== 'undefined' && navigator.onLine ? 'online' : 'offline'
+let mode: ConnectivityMode =
+  typeof navigator !== 'undefined' && navigator.onLine ? 'degraded' : 'offline'
 let failureCount = 0
 let successStreak = 0
 let suppressFailureReports = false
@@ -41,12 +42,13 @@ export function reportConnectivityFailure(): void {
   if (suppressFailureReports) return
   successStreak = 0
   failureCount += 1
+  const prev = mode
   if (!navigator.onLine) {
     setConnectivityMode('offline')
   } else {
     setConnectivityMode('degraded')
   }
-  failureListeners.forEach((fn) => fn())
+  if (mode !== prev) failureListeners.forEach((fn) => fn())
 }
 
 export function reportConnectivitySuccess(): void {
@@ -94,8 +96,10 @@ export function shouldFallbackToLocal(err: unknown): boolean {
 }
 
 /** @internal Test helper */
-export function resetConnectivityStateForTests(initial: ConnectivityMode = 'online'): void {
-  mode = initial
+export function resetConnectivityStateForTests(initial?: ConnectivityMode): void {
+  mode =
+    initial ??
+    (typeof navigator !== 'undefined' && navigator.onLine ? 'degraded' : 'offline')
   failureCount = 0
   successStreak = 0
   suppressFailureReports = false

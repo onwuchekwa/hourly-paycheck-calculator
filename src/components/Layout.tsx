@@ -241,7 +241,7 @@ function MobileNavLinks({
 
 export function Layout() {
   const { profile, logout } = useAuth()
-  const { mode } = useConnectivity()
+  const { mode, ready } = useConnectivity()
   const { appTitle, logoDataUrl, showLogo } = useCompanySettings()
   const navigate = useNavigate()
   const location = useLocation()
@@ -257,10 +257,11 @@ export function Layout() {
 
   useEffect(() => {
     if (isAdmin) return
+    if (!ready) return
     if (mode !== 'offline' && mode !== 'degraded') return
     if (onTimesheet) return
     navigate('/employee/timesheet', { replace: true })
-  }, [isAdmin, mode, onTimesheet, navigate])
+  }, [isAdmin, ready, mode, onTimesheet, navigate])
 
   const handleLogout = async () => {
     setMobileOpen(false)

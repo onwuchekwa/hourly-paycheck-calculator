@@ -4,8 +4,10 @@ import { hasPendingData } from '../lib/offline/localStore'
 import { useAuth } from '../contexts/AuthContext'
 
 export function OfflineBanner() {
-  const { mode, syncing, lastSyncResult, isOnline } = useConnectivity()
+  const { mode, ready, syncing, lastSyncResult, isOnline } = useConnectivity()
   const { profile } = useAuth()
+
+  if (!ready) return null
 
   if (mode === 'degraded') {
     return (

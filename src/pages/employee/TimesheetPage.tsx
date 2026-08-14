@@ -49,7 +49,7 @@ import { AlertBanner } from '../../components/AlertBanner'
 
 export function TimesheetPage() {
   const { profile } = useAuth()
-  const { mode, syncing, lastSyncResult } = useConnectivity()
+  const { mode, ready, syncing, lastSyncResult } = useConnectivity()
   const location = useLocation()
   const [workDate, setWorkDate] = useState(formatDate(new Date()))
   const [entry, setEntry] = useState<TimeEntry | null>(null)
@@ -107,7 +107,7 @@ export function TimesheetPage() {
     void loadEntry()
   }, [loadEntry])
 
-  useReloadOnConnectivityChange(mode, loadEntry)
+  useReloadOnConnectivityChange(mode, loadEntry, ready)
 
   const prevSyncingRef = useRef(syncing)
   useEffect(() => {
